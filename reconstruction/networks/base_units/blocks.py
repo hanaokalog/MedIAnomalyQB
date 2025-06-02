@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from networks.base_units.conv_layers import down_conv, up_conv, conv3x3
 from networks.base_units.memory_module import MemModule
+from networks.base_units.quasibinarize import QuasiBinarizingLayer
 
 
 class BasicBlock(nn.Module):
@@ -130,6 +131,41 @@ class BottleNeck(nn.Module):
 
         return {'out': out, 'z': z}
 
+class BottleNeckWithQuasiBinarize(nn.Module):
+    def __init__(self, in_planes, feature_size, mid_num=2048, latent_size=16, epsilon=0.2):
+        super(BottleNeckWithQuasiBinarize, self).__init__()
+        self.in_planes = in_planes
+        self.feature_size = feature_size
+        self.linear_enc = nn.Sequential(
+            nn.Linear(in_planes * feature_size * feature_size, mid_num),
+            nn.BatchNorm1d(mid_num),
+            nn.ReLU(True),
+            nn.Linear(mid_num, latent_size))
+
+# <!-- added by Shouhei Hanaoka
+        self.quasibinarize = QuasiBinarizingLayer(latent_size=latent_size, epsilon_per_dimension=epsilon)
+# -->
+
+        self.linear_dec = nn.Sequential(
+            nn.Linear(latent_size, mid_num),
+            nn.BatchNorm1d(mid_num),
+            nn.ReLU(True),
+            nn.Linear(mid_num, in_planes * feature_size * feature_size))
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)
+        z = self.linear_enc(x)
+# <!-- added by Shouhei Hanaoka
+        quasibinarize_out = self.quasibinarize(z)
+        z = quasibinarize_out['x']
+        firing_rate = quasibinarize_out['expected_firing_rate']
+        real_firing_rate = quasibinarize_out['real_firing_rate']
+# -->
+        out = self.linear_dec(z)
+
+        out = out.view(x.size(0), self.in_planes, self.feature_size, self.feature_size)
+
+        return {'out': out, 'z': z, 'firing_rate': firing_rate, 'real_firing_rate': real_firing_rate}
 
 class SpatialBottleNeck(nn.Module):
     def __init__(self, in_planes, feature_size, mid_num=2048, latent_size=16):

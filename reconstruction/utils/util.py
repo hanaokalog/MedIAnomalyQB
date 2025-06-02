@@ -3,7 +3,7 @@ import numpy as np
 from medpy import metric
 from functools import partial
 from multiprocessing import Pool
-from skimage import measure
+#from skimage import measure
 from statistics import mean
 import pandas as pd
 from numpy import ndarray

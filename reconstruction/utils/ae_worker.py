@@ -18,22 +18,45 @@ class AEWorker(BaseWorker):
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.grad_flag = True if self.opt.model['name'] in ['ae-grad', 'vae-elbo', 'vae-kl', 'vae-rec', 'vae-combi'] \
             else False
+        self.quasi_binarize_flag = True if self.opt.model['name'] in ['ae-qb', 'aeu-qb'] else False
+        self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight'] if self.quasi_binarize_flag else None
 
     def train_epoch(self):
         self.net.train()
         losses = AverageMeter()
+        if self.quasi_binarize_flag:
+            losses_recon = AverageMeter()
+            losses_firing = AverageMeter()
+            firing_rates = AverageMeter()
+            real_firing_rates = AverageMeter()
+        
         for idx_batch, data_batch in enumerate(self.train_loader):
             img = data_batch['img']
             img = img.cuda()
 
             net_out = self.net(img)
 
-            loss = self.criterion(img, net_out)
+            if self.quasi_binarize_flag:
+                firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
+                real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
+                loss, loss_recon, loss_firing = self.criterion(img, net_out)
+                losses_recon.update(loss_recon.mean(), img.size(0))
+                losses_firing.update(loss_firing.mean(), img.size(0))
+            else:
+                loss = self.criterion(img, net_out)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             losses.update(loss.item(), img.size(0))
+
+        if self.quasi_binarize_flag:
+            print("expected_firing_rate: {:.4f}, real_firing_rate: {:,.4f}, loss_recon: {:.4f}, loss_firing: {:.4f}".format(
+                  firing_rates.avg, 
+                  real_firing_rates.avg,
+                  losses_recon.avg, 
+                  losses_firing.avg
+            ))
         return losses.avg
 
     def data_rept(self):
@@ -82,6 +105,9 @@ class AEWorker(BaseWorker):
 
         test_imgs, test_imgs_hat, test_scores, test_score_maps, test_names, test_labels, test_masks = \
             [], [], [], [], [], [], []
+        test_firing_rates = []
+        test_real_firing_rates = []
+        
         # test_repts = []
         # with torch.no_grad():
         for idx_batch, data_batch in enumerate(self.test_loader):
@@ -91,6 +117,11 @@ class AEWorker(BaseWorker):
             img.requires_grad = self.grad_flag  # Will be True for gradient-based methods
 
             net_out = self.net(img)
+
+            test_firing_rate = net_out['firing_rate'] if self.quasi_binarize_flag else None
+            test_real_firing_rate = net_out['real_firing_rate'] if self.quasi_binarize_flag else None
+            test_firing_rates += test_firing_rate.cpu().detach().numpy().tolist() if self.quasi_binarize_flag else [None]
+            test_real_firing_rates += test_real_firing_rate.cpu().detach().numpy().tolist() if self.quasi_binarize_flag else [None]
 
             anomaly_score_map = self.criterion(img, net_out, anomaly_score=True, keepdim=True).detach().cpu()
             test_score_maps.append(anomaly_score_map)
@@ -111,12 +142,36 @@ class AEWorker(BaseWorker):
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
         test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).numpy()  # N
 
+        test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight if self.quasi_binarize_flag else 0
+        test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight if self.quasi_binarize_flag else 0
+
+        test_image_derived_losses = test_scores - test_scores_firing
+
         # image-level metrics
         test_labels = np.array(test_labels)
         auc = metrics.roc_auc_score(test_labels, test_scores)
         ap = metrics.average_precision_score(test_labels, test_scores)
         results = {'AUC': auc, "AP": ap}
-
+        if self.quasi_binarize_flag:
+            ap_firing = metrics.average_precision_score(test_labels, test_scores_firing)
+            ap_real_firing = metrics.average_precision_score(test_labels, test_scores_real_firing)
+            ap_image_derived = metrics.average_precision_score(test_labels, test_image_derived_losses)
+            auc_firing = metrics.roc_auc_score(test_labels, test_scores_firing)
+            auc_image_derived = metrics.roc_auc_score(test_labels, test_image_derived_losses)
+            auc_real_firing = metrics.roc_auc_score(test_labels, test_scores_real_firing)
+            auc_firing_boost10 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 10.0)
+            auc_firing_boost100 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 100.0)
+            results = {'AUC': auc, 
+                       'AP': ap, 
+                       'AUC_firing': auc_firing, 
+                       'AP_firing': ap_firing, 
+                       'AUC_real_firing': auc_real_firing,
+                       'AP_real_firing': ap_real_firing,
+                       'AUC_image_derived': auc_image_derived,
+                       'AP_image_derived': ap_image_derived,
+                        'AUC_firing_boost10': auc_firing_boost10,
+                        'AUC_firing_boost100': auc_firing_boost100
+            }
         # pixel-level metrics
         if self.pixel_metric:
             test_masks = torch.cat(test_masks, dim=0).unsqueeze(1)  # NxHxW -> Nx1xHxW

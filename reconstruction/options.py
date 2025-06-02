@@ -59,6 +59,9 @@ class Options:
         parser.add_argument("-save", '--test-save-flag', action='store_true')
         parser.add_argument('--test-model-path', type=str, default=None, help='model path to test')
 
+        parser.add_argument('--epsilon', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) epsilon. zero means no binarizing')
+        parser.add_argument('--firing_rate_cost_weight', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) neuron firing rate penarizing factor. zero means no penalty')
+
         args = parser.parse_args()
 
         self.gpu = args.gpu
@@ -71,6 +74,10 @@ class Options:
         self.model['in_c'] = self.in_c.setdefault(self.dataset, 1)
         self.model['input_size'] = args.input_size
 
+        # added by Shouhei Hanaoka
+        self.model['epsilon'] = args.epsilon
+        self.model['firing_rate_cost_weight'] = args.firing_rate_cost_weight
+
         # Parameters only for reconstruction model
         self.model['base_width'] = args.base_width
         self.model['expansion'] = args.expansion
@@ -81,7 +88,7 @@ class Options:
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)
-        self.train['epochs'] = self.epochs.setdefault(self.dataset, 250)
+        self.train['epochs'] = 1000 # self.epochs.setdefault(self.dataset, 250)
         self.train['eval_freq'] = args.train_eval_freq
         self.train['batch_size'] = args.train_batch_size
         self.train['lr'] = args.train_lr

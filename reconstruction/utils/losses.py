@@ -25,6 +25,57 @@ class AELoss(nn.Module):
         else:
             return loss.mean()
 
+class AE_QBLoss(nn.Module):
+    def __init__(self, firing_rate_cost_weight):
+        super(AE_QBLoss, self).__init__()
+        self.firing_rate_cost_weight = firing_rate_cost_weight
+
+    def forward(self, net_in, net_out, anomaly_score=False, keepdim=False):
+        x_hat = net_out['x_hat']
+        loss = (net_in - x_hat) ** 2
+
+        # add by Shouhei Hanaoka
+        firing_rate = net_out['firing_rate']
+        firing_rate = firing_rate.view(firing_rate.shape[0], 1, 1, 1)
+        firing_loss = firing_rate * self.firing_rate_cost_weight
+
+        loss += firing_loss.expand_as(loss)
+        # end of add by Shouhei Hanaoka
+
+        if anomaly_score:
+            return torch.mean(loss, dim=[1], keepdim=True) if keepdim else torch.mean(loss, dim=[1, 2, 3])
+        else:
+            return loss.mean(), loss.mean() - firing_loss.mean(), firing_loss.mean()
+        
+class AEU_QBLoss(nn.Module):
+    def __init__(self, firing_rate_cost_weight):
+        super(AEU_QBLoss, self).__init__()
+        self.firing_rate_cost_weight = firing_rate_cost_weight
+
+    def forward(self, net_in, net_out, anomaly_score=False, keepdim=False):
+        x_hat, log_var = net_out['x_hat'], net_out['log_var']
+        recon_loss = (net_in - x_hat) ** 2
+
+        loss1 = torch.exp(-log_var) * recon_loss
+
+        loss = loss1 + log_var
+
+        # add by Shouhei Hanaoka
+        firing_rate = net_out['firing_rate']
+        firing_rate = firing_rate.view(firing_rate.shape[0], 1, 1, 1)
+        firing_loss = firing_rate * self.firing_rate_cost_weight
+
+        loss += firing_loss #.expand_as(loss)
+
+        loss1 += firing_loss #.expand_as(loss1)
+
+        # end of add by Shouhei Hanaoka
+
+        if anomaly_score:
+            # calculate from loss1 (NOT loss)
+            return torch.mean(loss1, dim=[1], keepdim=True) if keepdim else torch.mean(loss1, dim=[1, 2, 3])
+        else:
+            return loss.mean(), loss.mean() - firing_loss.mean(), firing_loss.mean()
 
 class SSIMLoss(nn.Module):
     def __init__(self, win_size=11):

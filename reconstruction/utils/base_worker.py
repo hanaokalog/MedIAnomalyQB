@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 
 from networks.ae import AE
+from networks.ae_qb import AE_QB
+from networks.aeu_qb import AEU_QB
 from networks.mem_ae import MemAE
 from networks.aeu import AEU
 from networks.vae import VAE
@@ -65,6 +67,20 @@ class BaseWorker:
                 self.criterion = RelativePerceptualL1Loss()
             else:
                 self.criterion = AELoss()
+        elif self.opt.model['name'] in ['ae-qb']:
+            self.net = AE_QB(input_size=self.opt.model['input_size'], in_planes=self.opt.model['in_c'],
+                          base_width=self.opt.model['base_width'], expansion=self.opt.model['expansion'],
+                          mid_num=self.opt.model['hidden_num'], latent_size=self.opt.model['ls'],
+                          en_num_layers=self.opt.model["en_depth"], de_num_layers=self.opt.model["de_depth"],
+                          epsilon=self.opt.model['epsilon'])
+            self.criterion = AE_QBLoss(firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'])
+        elif self.opt.model['name'] in ['aeu-qb']:
+            self.net = AEU_QB(input_size=self.opt.model['input_size'], in_planes=self.opt.model['in_c'],
+                          base_width=self.opt.model['base_width'], expansion=self.opt.model['expansion'],
+                          mid_num=self.opt.model['hidden_num'], latent_size=self.opt.model['ls'],
+                          en_num_layers=self.opt.model["en_depth"], de_num_layers=self.opt.model["de_depth"],
+                          epsilon=self.opt.model['epsilon'])
+            self.criterion = AEU_QBLoss(firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'])
         elif self.opt.model['name'] == 'ae-spatial':
             self.net = AE(input_size=self.opt.model['input_size'], in_planes=self.opt.model['in_c'],
                           base_width=self.opt.model['base_width'], expansion=self.opt.model['expansion'],
@@ -212,6 +228,9 @@ class BaseWorker:
                        "latent_size": self.opt.model['ls'],
                        "en_num_layers": self.opt.model["en_depth"],
                        "de_num_layers": self.opt.model["de_depth"],
+
+                       "epsilon": self.opt.model['epsilon'],
+                       "firing_rate_cost_weight": self.opt.model['firing_rate_cost_weight'],
 
                        "epochs": self.opt.train["epochs"],
                        "batch_size": self.opt.train["batch_size"],
