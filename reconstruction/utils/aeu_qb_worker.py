@@ -1,27 +1,28 @@
 import time
-
-import numpy as np
 import torch
-from torchvision import transforms
 import os
 from sklearn import metrics
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
+from utils.util import compute_best_dice
+import numpy as np
 
-from utils.base_worker import BaseWorker
-from utils.util import AverageMeter, compute_best_dice
+from utils.ae_worker import AEWorker
+from utils.aeu_worker import AEUWorker
+from utils.util import AverageMeter
 
-
-class AEWorker(BaseWorker):
+class AEU_QBWorker(AEUWorker):
     def __init__(self, opt):
-        super(AEWorker, self).__init__(opt)
+        super(AEU_QBWorker, self).__init__(opt)
         self.pixel_metric = True if self.opt.dataset == "brats" else False
-        self.grad_flag = True if self.opt.model['name'] in ['ae-grad', 'vae-elbo', 'vae-kl', 'vae-rec', 'vae-combi'] \
-            else False
+        self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
     def train_epoch(self):
         self.net.train()
         losses = AverageMeter()
+        losses_recon = AverageMeter()
+        losses_firing = AverageMeter()
+        losses_perceptual = AverageMeter()
+        firing_rates = AverageMeter()
+        real_firing_rates = AverageMeter()
         
         for idx_batch, data_batch in enumerate(self.train_loader):
             img = data_batch['img']
@@ -29,54 +30,29 @@ class AEWorker(BaseWorker):
 
             net_out = self.net(img)
 
-            loss = self.criterion(img, net_out)
+            firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
+            real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
+            loss_etc = self.criterion(img, net_out)
+            loss = loss_etc['loss']
+            losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
+            losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
+            if 'perceptual_loss' in loss_etc:
+                losses_perceptual.update(loss_etc['perceptual_loss'].mean(), img.size(0))
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             losses.update(loss.item(), img.size(0))
 
-        return losses.avg
+        print("expected_firing_rate: {:.4f}, real_firing_rate: {:,.4f}, loss_recon: {:.4f}, loss_firing: {:.4f}, loss_perceptual: {:.4f}".format(
+                firing_rates.avg, 
+                real_firing_rates.avg,
+                losses_recon.avg, 
+                losses_firing.avg,
+                losses_perceptual.avg
+        ))
+        return losses.avg, losses_recon.avg, losses_firing.avg, losses_perceptual.avg, firing_rates.avg, real_firing_rates.avg
 
-    def data_rept(self):
-        self.net.eval()
-
-        train_normal = []
-        test_all, test_labels = [], []
-        with torch.no_grad():
-            for idx_batch, data_batch in enumerate(self.train_loader):
-                img = data_batch['img']
-                img = img.cuda()
-
-                net_out = self.net(img)
-                z = net_out['z']
-                train_normal.append(z.cpu().detach().numpy())
-
-            for idx_batch, data_batch in enumerate(self.test_loader):
-                img, label = data_batch['img'], data_batch['label']
-                img = img.cuda()
-
-                net_out = self.net(img)
-                z = net_out['z']
-
-                test_all.append(z.cpu().detach().numpy())
-                test_labels.append(label.item())
-
-            test_labels = np.array(test_labels)
-            test_all = np.concatenate(test_all, axis=0)
-
-            test_normal = test_all[np.where(test_labels == 0)]
-            test_abnormal = test_all[np.where(test_labels == 1)]
-
-        train_normal = np.concatenate(train_normal, axis=0)
-
-        np.save(os.path.join(self.opt.test['save_dir'], '{}_train.npy'.format(self.opt.dataset)), train_normal)
-        np.save(os.path.join(self.opt.test['save_dir'], '{}_test_normal.npy'.format(self.opt.dataset)), test_normal)
-        np.save(os.path.join(self.opt.test['save_dir'], '{}_test_abnormal.npy'.format(self.opt.dataset)), test_abnormal)
-
-        print("Train normal:", train_normal.shape)
-        print("Test normal:", test_normal.shape)
-        print("Test abnormal:", test_abnormal.shape)
 
     def evaluate(self):
         self.net.eval()
@@ -97,10 +73,10 @@ class AEWorker(BaseWorker):
 
             net_out = self.net(img)
 
-            test_firing_rate = net_out['firing_rate'] if self.quasi_binarize_flag else None
-            test_real_firing_rate = net_out['real_firing_rate'] if self.quasi_binarize_flag else None
-            test_firing_rates += test_firing_rate.cpu().detach().numpy().tolist() if self.quasi_binarize_flag else [None]
-            test_real_firing_rates += test_real_firing_rate.cpu().detach().numpy().tolist() if self.quasi_binarize_flag else [None]
+            test_firing_rate = net_out['firing_rate']
+            test_real_firing_rate = net_out['real_firing_rate']
+            test_firing_rates += test_firing_rate.cpu().detach().numpy().tolist()
+            test_real_firing_rates += test_real_firing_rate.cpu().detach().numpy().tolist()
 
             anomaly_score_map = self.criterion(img, net_out, anomaly_score=True, keepdim=True).detach().cpu()
             test_score_maps.append(anomaly_score_map)
@@ -121,8 +97,8 @@ class AEWorker(BaseWorker):
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
         test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).numpy()  # N
 
-        test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight if self.quasi_binarize_flag else 0
-        test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight if self.quasi_binarize_flag else 0
+        test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight
+        test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight
 
         test_image_derived_losses = test_scores - test_scores_firing
 
@@ -130,8 +106,25 @@ class AEWorker(BaseWorker):
         test_labels = np.array(test_labels)
         auc = metrics.roc_auc_score(test_labels, test_scores)
         ap = metrics.average_precision_score(test_labels, test_scores)
-        results = {'AUC': auc, "AP": ap}
-
+        ap_firing = metrics.average_precision_score(test_labels, test_scores_firing)
+        ap_real_firing = metrics.average_precision_score(test_labels, test_scores_real_firing)
+        ap_image_derived = metrics.average_precision_score(test_labels, test_image_derived_losses)
+        auc_firing = metrics.roc_auc_score(test_labels, test_scores_firing)
+        auc_image_derived = metrics.roc_auc_score(test_labels, test_image_derived_losses)
+        auc_real_firing = metrics.roc_auc_score(test_labels, test_scores_real_firing)
+        auc_boost10 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 10.0)
+        auc_boost100 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 100.0)
+        results = {'AUC': auc, 
+                    'AP': ap, 
+                    'AUC_firing': auc_firing, 
+                    'AP_firing': ap_firing, 
+                    'AUC_real_firing': auc_real_firing,
+                    'AP_real_firing': ap_real_firing,
+                    'AUC_image_derived': auc_image_derived,
+                    'AP_image_derived': ap_image_derived,
+                    'AUC_boost10': auc_boost10,
+                    'AUC_boost100': auc_boost100
+        }
         # pixel-level metrics
         if self.pixel_metric:
             test_masks = torch.cat(test_masks, dim=0).unsqueeze(1)  # NxHxW -> Nx1xHxW
@@ -173,61 +166,20 @@ class AEWorker(BaseWorker):
         self.enable_network_grad()
         return results
 
-    def visualize_2d(self, imgs, imgs_hat, score_maps, names, labels, masks=None):
-        imgs = (imgs + 1) / 2
-        imgs_hat = (imgs_hat + 1) / 2
-        imgs_hat = torch.clamp(imgs_hat, min=0, max=1)
-
-        overall_dir = os.path.join(self.opt.test['save_dir'], 'vis', 'overall')
-        separate_dir = os.path.join(self.opt.test['save_dir'], 'vis', 'separate')
-        if not os.path.exists(overall_dir):
-            os.makedirs(overall_dir)
-        if not os.path.exists(separate_dir):
-            os.makedirs(separate_dir)
-
-        # clamp_max = torch.quantile(score_maps, 0.9999, interpolation="nearest")
-        # # clamp_max = torch.quantile(score_maps, 0.999, interpolation="nearest")
-        # score_maps = torch.clamp(score_maps, min=0., max=clamp_max)
-        # score_maps = (score_maps - torch.min(score_maps)) / (torch.max(score_maps) - torch.min(score_maps))
-
-        if imgs.size(1) == 3:
-            score_maps = score_maps.repeat(1, 3, 1, 1)
-            masks = masks.repeat(1, 3, 1, 1) if masks is not None else None
-
-        for i in range(imgs.size(0)):
-            name = names[i][0]
-            img = imgs[i]
-            img_hat = imgs_hat[i]
-            map_norm = score_maps[i]
-            label = labels[i]
-
-            map_norm = (map_norm - torch.min(map_norm)) / (torch.max(map_norm) - torch.min(map_norm))
-
-            if masks is not None:
-                mask = masks[i]
-                overview = torch.cat([img, img_hat, map_norm, mask], dim=-1)
-            else:
-                overview = torch.cat([img, img_hat, map_norm], dim=-1)
-
-            overview = transforms.ToPILImage()(overview)
-            img_hat = transforms.ToPILImage()(img_hat)
-            pred = transforms.ToPILImage()(map_norm)
-
-            overview_path = os.path.join(overall_dir, str(label) + "_" + name + ".png")
-            rec_path = os.path.join(separate_dir, str(label) + "_" + name + "_rec" + ".png")
-            score_path = os.path.join(separate_dir, str(label) + "_" + name + "_pred" + ".png")
-
-            overview.save(overview_path)
-            img_hat.save(rec_path)
-            pred.save(score_path)
-
     def run_train(self):
         num_epochs = self.opt.train['epochs']
         print("=> Initial learning rate: {:g}".format(self.opt.train['lr']))
         t0 = time.time()
         for epoch in range(1, num_epochs + 1):
-            train_loss = self.train_epoch()
-            self.logger.log(step=epoch, data={"train/loss": train_loss})
+            train_loss, loss_recon, loss_firing, loss_perceptual, firing_rate, real_firing_rate = self.train_epoch()
+            self.logger.log(step=epoch, data={
+                "train/loss": train_loss
+                , "train/loss_recon": loss_recon
+                , "train/loss_firing": loss_firing
+                , "train/loss_perceptual": loss_perceptual
+                , "train/firing_rate": firing_rate
+                , "train/real_firing_rate": real_firing_rate
+            })
             # self.logger.log(step=epoch, data={"train/loss": train_loss, "train/lr": self.scheduler.get_last_lr()[0]})
             # self.scheduler.step()
 

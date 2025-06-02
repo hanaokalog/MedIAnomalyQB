@@ -6,8 +6,8 @@ def get_method(opt):
     print("=> Running Method: {}".format(opt.model['name']))
     if opt.model['name'] in ['ae', 'ae-grad', 'ae-spatial', 'ae-ssim', 'ae-l1', 'ae-perceptual']:
         return AEWorker(opt)
-    elif opt.model['name'] in ['ae-qb', 'aeu-qb']:
-        return AEWorker(opt)
+    elif opt.model['name'] in ['ae-qb', 'aeu-qb', 'aeu-perceptual-qb']:
+        return AEU_QBWorker(opt)
     elif opt.model['name'] == 'memae':
         return MemAEWorker(opt)
     elif opt.model['name'] == 'aeu':

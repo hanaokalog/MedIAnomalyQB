@@ -81,6 +81,16 @@ class BaseWorker:
                           en_num_layers=self.opt.model["en_depth"], de_num_layers=self.opt.model["de_depth"],
                           epsilon=self.opt.model['epsilon'])
             self.criterion = AEU_QBLoss(firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'])
+        elif self.opt.model['name'] in ['aeu-perceptual-qb']:
+            self.net = AEU_QB(input_size=self.opt.model['input_size'], in_planes=self.opt.model['in_c'],
+                          base_width=self.opt.model['base_width'], expansion=self.opt.model['expansion'],
+                          mid_num=self.opt.model['hidden_num'], latent_size=self.opt.model['ls'],
+                          en_num_layers=self.opt.model["en_depth"], de_num_layers=self.opt.model["de_depth"],
+                          epsilon=self.opt.model['epsilon'])
+            self.criterion = AEU_Perceptual_QBLoss(
+                firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
+                perceptual_loss_weight=self.opt.model['perceptual_loss_weight']
+            )
         elif self.opt.model['name'] == 'ae-spatial':
             self.net = AE(input_size=self.opt.model['input_size'], in_planes=self.opt.model['in_c'],
                           base_width=self.opt.model['base_width'], expansion=self.opt.model['expansion'],
@@ -231,6 +241,7 @@ class BaseWorker:
 
                        "epsilon": self.opt.model['epsilon'],
                        "firing_rate_cost_weight": self.opt.model['firing_rate_cost_weight'],
+                       "perceptual_loss_weight": self.opt.model['perceptual_loss_weight'],
 
                        "epochs": self.opt.train["epochs"],
                        "batch_size": self.opt.train["batch_size"],

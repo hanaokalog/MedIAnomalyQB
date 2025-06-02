@@ -61,6 +61,7 @@ class Options:
 
         parser.add_argument('--epsilon', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) epsilon. zero means no binarizing')
         parser.add_argument('--firing_rate_cost_weight', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) neuron firing rate penarizing factor. zero means no penalty')
+        parser.add_argument('--perceptual_loss_weight', type=float, default=1, help='perceptual loss weight. zero means no perceptual loss')
 
         args = parser.parse_args()
 
@@ -77,6 +78,7 @@ class Options:
         # added by Shouhei Hanaoka
         self.model['epsilon'] = args.epsilon
         self.model['firing_rate_cost_weight'] = args.firing_rate_cost_weight
+        self.model['perceptual_loss_weight'] = args.perceptual_loss_weight
 
         # Parameters only for reconstruction model
         self.model['base_width'] = args.base_width

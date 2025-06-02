@@ -1,6 +1,7 @@
 from utils.ae_worker import AEWorker
 from utils.memae_worker import MemAEWorker
 from utils.aeu_worker import AEUWorker
+from utils.aeu_qb_worker import AEU_QBWorker
 from utils.vae_worker import VAEWorker
 from utils.ganomaly_worker import GanomalyWorker
 from utils.constrainedae_worker import ConstrainedAEWorker

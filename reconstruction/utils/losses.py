@@ -45,7 +45,12 @@ class AE_QBLoss(nn.Module):
         if anomaly_score:
             return torch.mean(loss, dim=[1], keepdim=True) if keepdim else torch.mean(loss, dim=[1, 2, 3])
         else:
-            return loss.mean(), loss.mean() - firing_loss.mean(), firing_loss.mean()
+            return {
+                "loss": loss.mean(), 
+                "recon_loss": ((net_in - x_hat) ** 2).mean(),
+                "log_var": 0,
+                "firing_loss": firing_loss.mean()
+            }
         
 class AEU_QBLoss(nn.Module):
     def __init__(self, firing_rate_cost_weight):
@@ -75,7 +80,12 @@ class AEU_QBLoss(nn.Module):
             # calculate from loss1 (NOT loss)
             return torch.mean(loss1, dim=[1], keepdim=True) if keepdim else torch.mean(loss1, dim=[1, 2, 3])
         else:
-            return loss.mean(), loss.mean() - firing_loss.mean(), firing_loss.mean()
+            return {
+                "loss": loss.mean(), 
+                "recon_loss": (loss1-firing_loss).mean(),
+                "log_var": log_var.mean(),
+                "firing_loss": firing_loss.mean()
+            }
 
 class SSIMLoss(nn.Module):
     def __init__(self, win_size=11):
@@ -536,3 +546,49 @@ class RelativePerceptualL1Loss(PerceptualLoss):
             use_feature_normalization=True,
             use_L1_norm=True,
             use_relative_error=True)
+
+
+class AEU_Perceptual_QBLoss(AEU_QBLoss):
+    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1):
+        super(AEU_Perceptual_QBLoss, self).__init__(firing_rate_cost_weight)
+        self.firing_rate_cost_weight = firing_rate_cost_weight
+        self.perceptual_loss_weight = perceptual_loss_weight
+        self.perceptual_loss = RelativePerceptualL1Loss()
+
+    def forward(self, net_in, net_out, anomaly_score=False, keepdim=False):
+        x_hat, log_var = net_out['x_hat'], net_out['log_var']
+        recon_loss = (net_in - x_hat) ** 2
+
+        loss1 = torch.exp(-log_var) * recon_loss
+
+        loss = loss1 + log_var
+
+        # add by Shouhei Hanaoka
+        firing_rate = net_out['firing_rate']
+        firing_rate = firing_rate.view(firing_rate.shape[0], 1, 1, 1)
+        firing_loss = firing_rate * self.firing_rate_cost_weight
+
+        loss += firing_loss #.expand_as(loss)
+
+        loss1 += firing_loss #.expand_as(loss1)
+
+        perceptual_loss = self.perceptual_loss_weight * self.perceptual_loss(net_in, net_out)
+
+        loss += perceptual_loss
+
+        loss1 += perceptual_loss
+
+        # end of add by Shouhei Hanaoka
+
+        if anomaly_score:
+            # calculate from loss1 (NOT loss)
+            return torch.mean(loss1, dim=[1], keepdim=True) if keepdim else torch.mean(loss1, dim=[1, 2, 3])
+        else:
+            return {
+                "loss": loss.mean(), 
+                "recon_loss": (torch.exp(-log_var) * recon_loss).mean(),
+                "log_var": log_var.mean(),
+                "firing_loss": firing_loss.mean(),
+                "perceptual_loss": perceptual_loss.mean()
+            }
+
