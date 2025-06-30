@@ -31,6 +31,9 @@ class QuasiBinarizingLayer(torch.nn.Module):
         x = torch.sigmoid(x)
 #        x = torch.clamp(x, 0, 1)
         
+        # unnoised_x
+        unnoised_x = x.clone()
+
         # record real neuron firing rate
         real_firing_rate = torch.where(x > 0.5, 1.0, 0.0).mean(dim=1)
 
@@ -51,6 +54,7 @@ class QuasiBinarizingLayer(torch.nn.Module):
 
         return {
             "x": x, 
+            "unnoised_x": unnoised_x,
             "expected_firing_rate": expected_firing_rate,
             "real_firing_rate": real_firing_rate
         }

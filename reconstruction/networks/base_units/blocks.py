@@ -158,6 +158,7 @@ class BottleNeckWithQuasiBinarize(nn.Module):
 # <!-- added by Shouhei Hanaoka
         quasibinarize_out = self.quasibinarize(z)
         z = quasibinarize_out['x']
+        unnoised_z = quasibinarize_out['unnoised_x']
         firing_rate = quasibinarize_out['expected_firing_rate']
         real_firing_rate = quasibinarize_out['real_firing_rate']
 # -->
@@ -165,7 +166,8 @@ class BottleNeckWithQuasiBinarize(nn.Module):
 
         out = out.view(x.size(0), self.in_planes, self.feature_size, self.feature_size)
 
-        return {'out': out, 'z': z, 'firing_rate': firing_rate, 'real_firing_rate': real_firing_rate}
+        return {'out': out, 'z': z, 'unnoised_z': unnoised_z, 
+                'firing_rate': firing_rate, 'real_firing_rate': real_firing_rate}
 
 class SpatialBottleNeck(nn.Module):
     def __init__(self, in_planes, feature_size, mid_num=2048, latent_size=16):

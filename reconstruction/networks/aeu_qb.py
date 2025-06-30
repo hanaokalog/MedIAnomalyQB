@@ -19,7 +19,7 @@ class AEU_QB(AEU):
         en4 = self.en_block4(en3)
 
         bottle_out = self.bottle_neck(en4)
-        z, de4 = bottle_out['z'], bottle_out['out']
+        z, unnoised_z, de4 = bottle_out['z'], bottle_out['unnoised_z'], bottle_out['out']
         firing_rate = bottle_out['firing_rate']
         real_firing_rate = bottle_out['real_firing_rate']
 
@@ -28,4 +28,8 @@ class AEU_QB(AEU):
         de1 = self.de_block3(de2)
         x_hat, log_var = self.de_block4(de1).chunk(2, 1)
 
-        return {'x_hat': x_hat, 'log_var': log_var, 'z': z, 'en_features': [en1, en2, en3], 'de_features': [de1, de2, de3], 'firing_rate': firing_rate, 'real_firing_rate': real_firing_rate}
+        return {'x_hat': x_hat, 'log_var': log_var, 
+                'z': z, 'unnoised_z': unnoised_z, 
+                'en_features': [en1, en2, en3], 'de_features': [de1, de2, de3], 
+                'firing_rate': firing_rate, 'real_firing_rate': real_firing_rate
+                }

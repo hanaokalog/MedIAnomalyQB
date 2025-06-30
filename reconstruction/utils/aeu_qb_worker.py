@@ -5,6 +5,9 @@ from sklearn import metrics
 from utils.util import compute_best_dice
 import numpy as np
 
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+
 from utils.ae_worker import AEWorker
 from utils.aeu_worker import AEUWorker
 from utils.util import AverageMeter
@@ -15,7 +18,7 @@ class AEU_QBWorker(AEUWorker):
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
-    def train_epoch(self):
+    def train_epoch(self, force_firing=False):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
@@ -32,7 +35,7 @@ class AEU_QBWorker(AEUWorker):
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
-            loss_etc = self.criterion(img, net_out)
+            loss_etc = self.criterion(img, net_out, force_firing=force_firing)
             loss = loss_etc['loss']
             losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
             losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
@@ -62,8 +65,12 @@ class AEU_QBWorker(AEUWorker):
             [], [], [], [], [], [], []
         test_firing_rates = []
         test_real_firing_rates = []
+        test_recon_losses = []
+        test_perceptual_losses = []
+        test_firing_rates = []
+        test_real_firing_rates = []
         
-        # test_repts = []
+        test_repts = []
         # with torch.no_grad():
         for idx_batch, data_batch in enumerate(self.test_loader):
             # test batch_size=1
@@ -78,8 +85,13 @@ class AEU_QBWorker(AEUWorker):
             test_firing_rates += test_firing_rate.cpu().detach().numpy().tolist()
             test_real_firing_rates += test_real_firing_rate.cpu().detach().numpy().tolist()
 
-            anomaly_score_map = self.criterion(img, net_out, anomaly_score=True, keepdim=True).detach().cpu()
+            # anomaly_score_map = self.criterion(img, net_out, anomaly_score=True, keepdim=True).detach().cpu()
+            lossset = self.criterion(img, net_out, all_scores=True, force_firing=False)
+            anomaly_score_map = lossset['anomaly_score_maps'].cpu().detach()  # Nx1xHxW
             test_score_maps.append(anomaly_score_map)
+
+            test_recon_losses += lossset["recon_losses"].cpu().detach().numpy().tolist()
+            test_perceptual_losses += lossset["perceptual_losses"].cpu().detach().numpy().tolist()
 
             test_labels.append(label.item())
             if self.pixel_metric:
@@ -91,16 +103,18 @@ class AEU_QBWorker(AEUWorker):
                 test_names.append(name)
                 test_imgs.append(img.cpu())
                 test_imgs_hat.append(img_hat.cpu())
-                # z = net_out['z']
-                # test_repts.append(z.cpu().detach().numpy())
+                z = net_out['z']
+                test_repts.append(z.cpu().detach().numpy())
 
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
-        test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).numpy()  # N
+        test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
 
         test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight
         test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight
 
         test_image_derived_losses = test_scores - test_scores_firing
+        test_recon_losses = np.array(test_recon_losses)
+        test_perceptual_losses = np.array(test_perceptual_losses)
 
         # image-level metrics
         test_labels = np.array(test_labels)
@@ -112,8 +126,8 @@ class AEU_QBWorker(AEUWorker):
         auc_firing = metrics.roc_auc_score(test_labels, test_scores_firing)
         auc_image_derived = metrics.roc_auc_score(test_labels, test_image_derived_losses)
         auc_real_firing = metrics.roc_auc_score(test_labels, test_scores_real_firing)
-        auc_boost10 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 10.0)
-        auc_boost100 = metrics.roc_auc_score(test_labels, test_image_derived_losses + test_scores_firing * 100.0)
+        auc_perceptual = metrics.roc_auc_score(test_labels, test_perceptual_losses)
+        auc_recon = metrics.roc_auc_score(test_labels, test_recon_losses)
         results = {'AUC': auc, 
                     'AP': ap, 
                     'AUC_firing': auc_firing, 
@@ -122,17 +136,17 @@ class AEU_QBWorker(AEUWorker):
                     'AP_real_firing': ap_real_firing,
                     'AUC_image_derived': auc_image_derived,
                     'AP_image_derived': ap_image_derived,
-                    'AUC_boost10': auc_boost10,
-                    'AUC_boost100': auc_boost100
+                    'AUC_perceptual': auc_perceptual,
+                    'AUC_recon': auc_recon
         }
         # pixel-level metrics
         if self.pixel_metric:
             test_masks = torch.cat(test_masks, dim=0).unsqueeze(1)  # NxHxW -> Nx1xHxW
             pix_ap = metrics.average_precision_score(test_masks.numpy().reshape(-1),
-                                                     test_score_maps.numpy().reshape(-1))
+                                                     test_score_maps.cpu().numpy().reshape(-1))
             pix_auc = metrics.roc_auc_score(test_masks.numpy().reshape(-1),
-                                            test_score_maps.numpy().reshape(-1))
-            best_dice, best_thresh = compute_best_dice(test_score_maps.numpy(), test_masks.numpy())
+                                            test_score_maps.cpu().numpy().reshape(-1))
+            best_dice, best_thresh = compute_best_dice(test_score_maps.cpu().numpy(), test_masks.numpy())
             results.update({'PixAUC': pix_auc, 'PixAP': pix_ap, 'BestDice': best_dice, 'BestThresh': best_thresh})
         else:
             test_masks = None
@@ -147,22 +161,33 @@ class AEU_QBWorker(AEUWorker):
             test_imgs_hat = torch.cat(test_imgs_hat, dim=0)
             self.visualize_2d(test_imgs, test_imgs_hat, test_score_maps, test_names, test_labels, test_masks)
 
-            # # rept vis
-            # test_repts = np.concatenate(test_repts, axis=0)  # Nxd
-            # test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
-            # normal_tsne = test_tsne[np.where(test_labels == 0)]
-            # abnormal_tsne = test_tsne[np.where(test_labels == 1)]
-            # plt.rcParams['font.family'] = 'Times New Roman'
-            # plt.rcParams.update({'font.size': 14})
-            # plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
-            # plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
-            # plt.xticks([])
-            # plt.yticks([])
-            # plt.legend(loc='upper left')
-            # # plt.title(self.opt.data_name[self.opt.dataset] + ' | OC-SVM Perf. 0.66/0.82')
-            # # plt.title('OC-SVM Perf. 0.48/0.52')
-            # plt.tight_layout()
-            # plt.savefig(os.path.join(self.opt.train['save_dir'], 'tsne.pdf'))
+            # rept vis
+            test_repts = np.concatenate(test_repts, axis=0)  # Nxd
+            test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
+            normal_tsne = test_tsne[np.where(test_labels == 0)]
+            abnormal_tsne = test_tsne[np.where(test_labels == 1)]
+            plt.rcParams['font.family'] = 'Times New Roman'
+            plt.rcParams.update({'font.size': 14})
+            plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
+            plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
+            plt.xticks([])
+            plt.yticks([])
+            plt.legend(loc='upper left')
+            # plt.title(self.opt.data_name[self.opt.dataset] + ' | OC-SVM Perf. 0.66/0.82')
+            # plt.title('OC-SVM Perf. 0.48/0.52')
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.opt.train['save_dir'], 'tsne.pdf'))
+            plt.close()
+
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_labels.npy'), test_labels)
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_repts.npy'), test_repts)
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_scores_firing.npy'), test_scores_firing)
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_scores_real_firing.npy'), test_scores_real_firing)
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_perceptual_losses.npy'), test_perceptual_losses)
+            np.save(os.path.join(self.opt.train['save_dir'], 'test_recon_losses.npy'), test_recon_losses)
+
+            plt.imsave(os.path.join(self.opt.train['save_dir'], 'repts.png'), test_repts[:,:])
+
         self.enable_network_grad()
         return results
 
@@ -171,7 +196,7 @@ class AEU_QBWorker(AEUWorker):
         print("=> Initial learning rate: {:g}".format(self.opt.train['lr']))
         t0 = time.time()
         for epoch in range(1, num_epochs + 1):
-            train_loss, loss_recon, loss_firing, loss_perceptual, firing_rate, real_firing_rate = self.train_epoch()
+            train_loss, loss_recon, loss_firing, loss_perceptual, firing_rate, real_firing_rate = self.train_epoch(force_firing=epoch<100)
             self.logger.log(step=epoch, data={
                 "train/loss": train_loss
                 , "train/loss_recon": loss_recon
