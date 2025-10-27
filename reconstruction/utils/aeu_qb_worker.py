@@ -18,10 +18,11 @@ class AEU_QBWorker(AEUWorker):
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
-    def train_epoch(self, force_firing=False):
+    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
+        losses_logvar = AverageMeter()
         losses_firing = AverageMeter()
         losses_perceptual = AverageMeter()
         firing_rates = AverageMeter()
@@ -35,9 +36,10 @@ class AEU_QBWorker(AEUWorker):
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
-            loss_etc = self.criterion(img, net_out, force_firing=force_firing)
+            loss_etc = self.criterion(img, net_out, force_firing=force_firing, firing_cost_multiplier=firing_cost_multiplier)
             loss = loss_etc['loss']
             losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
+            losses_logvar.update(loss_etc['log_var'].mean(), img.size(0))
             losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
             if 'perceptual_loss' in loss_etc:
                 losses_perceptual.update(loss_etc['perceptual_loss'].mean(), img.size(0))
@@ -54,10 +56,10 @@ class AEU_QBWorker(AEUWorker):
                 losses_firing.avg,
                 losses_perceptual.avg
         ))
-        return losses.avg, losses_recon.avg, losses_firing.avg, losses_perceptual.avg, firing_rates.avg, real_firing_rates.avg
+        return losses.avg, losses_recon.avg, losses_logvar.avg, losses_firing.avg, losses_perceptual.avg, firing_rates.avg, real_firing_rates.avg
 
 
-    def evaluate(self):
+    def evaluate(self, epoch='test'):
         self.net.eval()
         self.close_network_grad()
 
@@ -98,11 +100,12 @@ class AEU_QBWorker(AEUWorker):
                 mask = data_batch['mask']
                 test_masks.append(mask)
 
-            if self.opt.test['save_flag']:
+            if 1: # self.opt.test['save_flag']:
                 img_hat = net_out['x_hat']
                 test_names.append(name)
                 test_imgs.append(img.cpu())
                 test_imgs_hat.append(img_hat.cpu())
+                
                 z = net_out['z']
                 test_repts.append(z.cpu().detach().numpy())
 
@@ -156,28 +159,46 @@ class AEU_QBWorker(AEUWorker):
         test_abnormal_score = np.mean(test_scores[np.where(test_labels == 1)])
         results.update({"normal_score": test_normal_score, "abnormal_score": test_abnormal_score})
 
+        # latent represenations
+        test_repts = np.concatenate(test_repts, axis=0)  # Nxd
+        plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
+
+        # reconstruction results
+        test_imgs_first = torch.cat(test_imgs, dim=0)[0:4,:,:,:]
+        test_imgs_first_hat = torch.cat(test_imgs_hat, dim=0)[0:4,:,:,:]
+        test_imgs_last = torch.cat(test_imgs, dim=0)[-5:-1,:,:,:]
+        test_imgs_last_hat = torch.cat(test_imgs_hat, dim=0)[-5:-1,:,:,:]
+        test_imgs_ = torch.cat((test_imgs_first, test_imgs_last), dim=0)
+        test_imgs_hat_ = torch.cat((test_imgs_first_hat, test_imgs_last_hat), dim=0)
+        img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_), dim=4)
+        img = torch.permute(img, (4,2,0,3,1))
+        img = img.reshape((img.shape[0]*img.shape[1], img.shape[2]*img.shape[3], img.shape[4]))
+        if(img.shape[2] == 1):
+            img = img.reshape((img.shape[0], img.shape[1]))
+        img = (img - torch.min(img)) / (torch.max(img) - torch.min(img))
+        plt.imsave(os.path.join(self.opt.train['save_dir'], f'imgs_Ep{epoch}.png'), img, cmap='gray')
+
+        # rept vsne
+        test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
+        normal_tsne = test_tsne[np.where(test_labels == 0)]
+        abnormal_tsne = test_tsne[np.where(test_labels == 1)]
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams.update({'font.size': 14})
+        plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
+        plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
+        plt.xticks([])
+        plt.yticks([])
+        plt.legend(loc='upper left')
+        # plt.title(self.opt.data_name[self.opt.dataset] + ' | OC-SVM Perf. 0.66/0.82')
+        # plt.title('OC-SVM Perf. 0.48/0.52')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.opt.train['save_dir'], f'tsne_Ep{epoch}.pdf'))
+        plt.close()
+
         if self.opt.test['save_flag']:
             test_imgs = torch.cat(test_imgs, dim=0)
             test_imgs_hat = torch.cat(test_imgs_hat, dim=0)
             self.visualize_2d(test_imgs, test_imgs_hat, test_score_maps, test_names, test_labels, test_masks)
-
-            # rept vis
-            test_repts = np.concatenate(test_repts, axis=0)  # Nxd
-            test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
-            normal_tsne = test_tsne[np.where(test_labels == 0)]
-            abnormal_tsne = test_tsne[np.where(test_labels == 1)]
-            plt.rcParams['font.family'] = 'Times New Roman'
-            plt.rcParams.update({'font.size': 14})
-            plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
-            plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
-            plt.xticks([])
-            plt.yticks([])
-            plt.legend(loc='upper left')
-            # plt.title(self.opt.data_name[self.opt.dataset] + ' | OC-SVM Perf. 0.66/0.82')
-            # plt.title('OC-SVM Perf. 0.48/0.52')
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.opt.train['save_dir'], 'tsne.pdf'))
-            plt.close()
 
             np.save(os.path.join(self.opt.train['save_dir'], 'test_labels.npy'), test_labels)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_repts.npy'), test_repts)
@@ -185,8 +206,6 @@ class AEU_QBWorker(AEUWorker):
             np.save(os.path.join(self.opt.train['save_dir'], 'test_scores_real_firing.npy'), test_scores_real_firing)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_perceptual_losses.npy'), test_perceptual_losses)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_recon_losses.npy'), test_recon_losses)
-
-            plt.imsave(os.path.join(self.opt.train['save_dir'], 'repts.png'), test_repts[:,:])
 
         self.enable_network_grad()
         return results
@@ -196,10 +215,14 @@ class AEU_QBWorker(AEUWorker):
         print("=> Initial learning rate: {:g}".format(self.opt.train['lr']))
         t0 = time.time()
         for epoch in range(1, num_epochs + 1):
-            train_loss, loss_recon, loss_firing, loss_perceptual, firing_rate, real_firing_rate = self.train_epoch(force_firing=epoch<100)
+#            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
+#                self.train_epoch(force_firing=epoch<100)
+            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
+                self.train_epoch(force_firing=False, firing_cost_multiplier=np.minimum(1.0, epoch/100.0))
             self.logger.log(step=epoch, data={
                 "train/loss": train_loss
                 , "train/loss_recon": loss_recon
+                , "train/loss_logvar": loss_logvar
                 , "train/loss_firing": loss_firing
                 , "train/loss_perceptual": loss_perceptual
                 , "train/firing_rate": firing_rate
@@ -209,7 +232,7 @@ class AEU_QBWorker(AEUWorker):
             # self.scheduler.step()
 
             if epoch == 1 or epoch % self.opt.train['eval_freq'] == 0:
-                eval_results = self.evaluate()
+                eval_results = self.evaluate(epoch)
 
                 t = time.time() - t0
                 print("Epoch[{:3d}/{:3d}]  Time:{:.1f}s  loss:{:.5f}".format(epoch, num_epochs, t, train_loss),

@@ -22,6 +22,8 @@ def get_method(opt):
         return ConstrainedAEWorker(opt)
     elif opt.model['name'] == 'dae':
         return DAEWorker(opt)
+    elif opt.model['name'] == 'unet-qb':
+        return AEU_QBWorker(opt)
     else:
         raise Exception("Invalid model name: {}".format(opt.model['name']))
 

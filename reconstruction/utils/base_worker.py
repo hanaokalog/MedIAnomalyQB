@@ -15,6 +15,7 @@ from networks.vae import VAE
 from networks.ganomaly import Ganomaly
 from networks.constrained_ae import ConstrainedAE
 from networks.unet import UNet
+from networks.unet_qb import UNet_QB
 
 from dataloaders.data_utils import get_transform, get_data_path
 from dataloaders.dataload import MedAD, BraTSAD, OCT2017, ColonAD, ISIC2018, CpChildA, Camelyon16AD
@@ -148,6 +149,17 @@ class BaseWorker:
         elif self.opt.model['name'] == 'dae':
             self.net = UNet(in_channels=self.opt.model['in_c'], n_classes=self.opt.model['in_c'])
             self.criterion = AELoss()
+        elif self.opt.model['name'] == 'unet-qb':
+            self.net = UNet_QB(
+                in_channels=self.opt.model['in_c'], 
+                n_classes=self.opt.model['in_c'],
+                image_size=self.opt.model['input_size'],
+                epsilon=self.opt.model['epsilon']
+            )
+            self.criterion = AEU_Perceptual_QBLoss(
+                firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
+                perceptual_loss_weight=self.opt.model['perceptual_loss_weight']
+            )
         else:
             raise NotImplementedError("Unexpected model name: {}".format(self.opt.model['name']))
         self.net = self.net.cuda()

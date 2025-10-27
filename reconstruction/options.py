@@ -90,7 +90,7 @@ class Options:
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)
-        self.train['epochs'] = 1000 # self.epochs.setdefault(self.dataset, 250)
+        self.train['epochs'] = self.epochs.setdefault(self.dataset, 250)
         self.train['eval_freq'] = args.train_eval_freq
         self.train['batch_size'] = args.train_batch_size
         self.train['lr'] = args.train_lr
