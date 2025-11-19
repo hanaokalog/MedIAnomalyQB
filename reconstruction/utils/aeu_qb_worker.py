@@ -220,8 +220,10 @@ class AEU_QBWorker(AEUWorker):
 #                self.train_epoch(force_firing=False, firing_cost_multiplier=np.minimum(1.0, epoch/100.0))
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=True)
+#            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
+#                self.train_epoch(force_firing=False)
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-                self.train_epoch(force_firing=False)
+                self.train_epoch(force_firing = (epoch < 100))
 
             self.logger.log(step=epoch, data={
                 "train/loss": train_loss
