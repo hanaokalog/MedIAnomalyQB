@@ -594,7 +594,7 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
 
             firing_loss2 = (net_out['unnoised_z'].mean(dim=[0], keepdim=True)-firing_rate_target)**2  # Use the mean firing rate across the batch
             firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0 # * self.firing_rate_cost_weight
+            firing_loss2 = firing_loss2 * 10.0 # * self.firing_rate_cost_weight
             firing_loss += firing_loss2
 
         loss += firing_loss #.expand_as(loss)
