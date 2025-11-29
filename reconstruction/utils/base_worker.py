@@ -154,7 +154,8 @@ class BaseWorker:
                 in_channels=self.opt.model['in_c'], 
                 n_classes=self.opt.model['in_c'],
                 image_size=self.opt.model['input_size'],
-                epsilon=self.opt.model['epsilon']
+                epsilon=self.opt.model['epsilon'],
+                using_heaviside=self.opt.model['heaviside']
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],

@@ -6,11 +6,13 @@ class QuasiBinarizingLayer(torch.nn.Module):
     def __init__(
         self, 
         latent_size, 
-        epsilon_per_dimension = 0.2
+        epsilon_per_dimension = 0.2,
+        using_heaviside = False
     ):
         super().__init__()
         self.epsilon = epsilon_per_dimension
         self.latent_size = latent_size
+        self.using_heaviside = using_heaviside
         self.sigmoid = torch.nn.Sigmoid()
         self.laplace = torch.distributions.laplace.Laplace(0., 1. / (epsilon_per_dimension+1.0e-20))
         self.relu = torch.nn.ReLU()
@@ -28,19 +30,27 @@ class QuasiBinarizingLayer(torch.nn.Module):
         assert x.shape[1] == self.latent_size
 
         # clip into [0,1] by sigmoid
+#        x = torch.sigmoid(x)
         x = torch.sigmoid(x)
-#        x = torch.clamp(x, 0, 1)
         
         # unnoised_x
         unnoised_x = x # .clone()
 
-        # record real neuron firing rate
-        real_firing_rate = torch.where(x > 0.5, 1.0, 0.0).mean(dim=1)
+        # Heaviside
+        heavisided = torch.where(x > 0.5, 1.0, 0.0)
 
-        # quasi-binarize (1-bit information bottle-neck) by Laplace mechanism
-        # using reparametrization trick?? <- no meaning because the probability distribution to be sampled is not dependent upon any network parameter
-        if self.training:
-            x = x + self.laplace.sample(x.shape).to(x.device)
+        # record real neuron firing rate
+        real_firing_rate = heavisided.mean(dim=1)
+        
+        # heavisided result (undifferntiatable)
+        if(self.using_heaviside):
+            x = heavisided 
+        else:
+
+            # quasi-binarize (1-bit information bottle-neck) by Laplace mechanism
+            # using reparametrization trick?? <- no meaning because the probability distribution to be sampled is not dependent upon any network parameter
+            if self.training:
+                x = x + self.laplace.sample(x.shape).to(x.device)
 
         # calculate the expected value of neuronal firing rate for each sample in minibatch
 #        clampedx = torch.clamp(x, 0.0, 1.0)

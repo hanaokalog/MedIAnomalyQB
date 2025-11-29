@@ -232,7 +232,7 @@ class AEU_QBWorker(AEUWorker):
         for epoch in range(1, num_epochs + 1):
 
             firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
-            shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
+            shortcut_multiplier = 0.0 if epoch<100.0 else 1.0
 
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
                 self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier)

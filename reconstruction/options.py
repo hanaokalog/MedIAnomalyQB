@@ -57,6 +57,7 @@ class Options:
         parser.add_argument('--train-seed', type=int, default=None, help='random seed')
 
         parser.add_argument("-save", '--test-save-flag', action='store_true')
+        parser.add_argument("--heaviside", action='store_true')
         parser.add_argument('--test-model-path', type=str, default=None, help='model path to test')
 
         parser.add_argument('--epsilon', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) epsilon. zero means no binarizing')
@@ -79,6 +80,7 @@ class Options:
         self.model['epsilon'] = args.epsilon
         self.model['firing_rate_cost_weight'] = args.firing_rate_cost_weight
         self.model['perceptual_loss_weight'] = args.perceptual_loss_weight
+        self.model['heaviside'] = args.heaviside
 
         # Parameters only for reconstruction model
         self.model['base_width'] = args.base_width
