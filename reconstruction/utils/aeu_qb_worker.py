@@ -12,13 +12,15 @@ from utils.ae_worker import AEWorker
 from utils.aeu_worker import AEUWorker
 from utils.util import AverageMeter
 
+import wandb
+
 class AEU_QBWorker(AEUWorker):
     def __init__(self, opt):
         super(AEU_QBWorker, self).__init__(opt)
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
-    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0):
+    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
@@ -32,7 +34,7 @@ class AEU_QBWorker(AEUWorker):
             img = data_batch['img']
             img = img.cuda()
 
-            net_out = self.net(img)
+            net_out = self.net(img, shortcut_multiplier=shortcut_multiplier)
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
@@ -159,9 +161,16 @@ class AEU_QBWorker(AEUWorker):
         test_abnormal_score = np.mean(test_scores[np.where(test_labels == 1)])
         results.update({"normal_score": test_normal_score, "abnormal_score": test_abnormal_score})
 
-        # latent represenations
+        # latent representaions
         test_repts = np.concatenate(test_repts, axis=0)  # Nxd
         plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
+        if self.logger is not None:
+            repts_img = np.stack((
+                np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
+                np.clip(test_repts[:,:]*2-0.5, 0., 1.), 
+                np.clip(test_repts[:,:]*2-0.0, 0., 1.)
+            ), axis=2)
+            self.logger.log(step=epoch, data={f'repts/Ep{epoch}': wandb.Image(repts_img, caption=f'repts_Ep{epoch}', mode='RGB')})
 
         # reconstruction results
         test_imgs_first = torch.cat(test_imgs, dim=0)[0:4,:,:,:]
@@ -177,6 +186,12 @@ class AEU_QBWorker(AEUWorker):
             img = img.reshape((img.shape[0], img.shape[1]))
         img = (img - torch.min(img)) / (torch.max(img) - torch.min(img))
         plt.imsave(os.path.join(self.opt.train['save_dir'], f'imgs_Ep{epoch}.png'), img, cmap='gray')
+        if self.logger is not None:
+            if(len(img.shape) == 2):
+                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.T[:,:,np.newaxis], caption=f'imgs_Ep{epoch}', mode="L")})
+            else:
+                assert(img.shape[2] == 3)
+                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
         # rept vsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
@@ -216,14 +231,17 @@ class AEU_QBWorker(AEUWorker):
         t0 = time.time()
         for epoch in range(1, num_epochs + 1):
 
-#            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-#                self.train_epoch(force_firing=False, firing_cost_multiplier=np.minimum(1.0, epoch/100.0))
+            firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
+            shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
+
+            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
+                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=True)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=False)
-            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-                self.train_epoch(force_firing = (epoch < 100))
+#            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
+#                self.train_epoch(force_firing = (epoch < 100))
 
             self.logger.log(step=epoch, data={
                 "train/loss": train_loss

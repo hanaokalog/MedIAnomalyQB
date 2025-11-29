@@ -9,7 +9,7 @@ from networks.base_units.quasibinarize import QuasiBinarizingLayer
 
 from networks.unet import UNet
 
-
+import numpy as np
 
 
 def get_groups(channels: int) -> int:
@@ -32,7 +32,7 @@ class UNet_QB(UNet):
             self,
             in_channels=1,
             n_classes=2,
-            depth=5,
+            depth=7,
             wf=6,
             padding=True,
             norm="group",
@@ -41,8 +41,9 @@ class UNet_QB(UNet):
             epsilon=1.0, 
 #            latent_sizes_per_pixel=(1,2,4,8,16),
 #            latent_sizes_per_pixel=(4,8,16,32,64),
-            latent_sizes_per_pixel=(1,2,4,8,16),
-            num_top_latent=8192
+#            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
+            latent_sizes_per_pixel=(1,2,2,4,4,8,8),
+            num_top_latent=1024
     ):
         """
         QuasiBinarization version of
@@ -76,6 +77,9 @@ class UNet_QB(UNet):
         self.image_size = image_size
         self.latent_sizes_per_pixel = latent_sizes_per_pixel
 
+        self.image_average_bias = nn.Parameter(torch.tensor(np.zeros((1,in_channels,image_size,image_size), dtype=np.float32)))
+        self.image_std_bias = 1 # nn.Parameter(torch.tensor(np.ones((1,in_channels,image_size,image_size), dtype=np.float32)))
+
         self.preneckconvs = nn.ModuleList()
         self.bottlenecks = nn.ModuleList()
         self.postneckconvs = nn.ModuleList()
@@ -85,27 +89,59 @@ class UNet_QB(UNet):
             self.down_path.append(
                 UNetConvBlock(prev_channels, 2 ** (wf + i), padding, norm=norm)
             )
-            self.preneckconvs.append(
-                nn.Conv2d(2 ** (wf + i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
-            )
-            self.bottlenecks.append(
-                QuasiBinarizingLayer(
-                    latent_sizes_per_pixel[i] * (image_size//(2**i))**2, 
-                    epsilon_per_dimension=epsilon
+            if latent_sizes_per_pixel[i] == 'identity':
+                self.preneckconvs.append(
+                    nn.Identity()
                 )
-            )
-            self.postneckconvs.append(
-                nn.Conv2d(latent_sizes_per_pixel[i], 2 ** (wf + i), kernel_size=1, padding=0)
-            )
+                self.bottlenecks.append(
+                    QuasiBinarizingLayer(
+                        2 ** (wf + i) * (image_size//(2**i))**2, 
+                        epsilon_per_dimension=epsilon
+                    )
+                )
+                self.postneckconvs.append(
+                    nn.Identity()
+                )
+            else:
+                self.preneckconvs.append(
+                    nn.Conv2d(2 ** (wf + i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
+                )
+                self.bottlenecks.append(
+                    QuasiBinarizingLayer(
+                        latent_sizes_per_pixel[i] * (image_size//(2**i))**2, 
+                        epsilon_per_dimension=epsilon
+                    )
+                )
+                self.postneckconvs.append(
+                    nn.Conv2d(latent_sizes_per_pixel[i], 2 ** (wf + i), kernel_size=1, padding=0)
+                )
             prev_channels = 2 ** (wf + i)
 
         self.top_preneckFC = nn.Linear(prev_channels * (image_size//(2**(depth-1)))**2, num_top_latent)
 
-        self.top_norm1 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
+#        self.top_norm1 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
+#        self.top_norm_optional_1 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
+#        self.top_norm_optional_2 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
+
+#        self.top_FC_optional_1 = nn.Linear(num_top_latent, num_top_latent)
+#        self.top_FC_optional_2 = nn.Linear(num_top_latent, num_top_latent)
+
+#        self.top_preneck_bias = nn.Parameter(torch.tensor(np.zeros((num_top_latent), dtype=np.float32)))
+#        self.top_postneck_bias = nn.Parameter(torch.tensor(np.zeros((num_top_latent), dtype=np.float32)))
+
+        # a hack
+        if 0:
+            self.top_FC_optional_1.weight.data.fill_(0.0)
+            self.top_FC_optional_1.bias.data.fill_(0.0)
+            self.top_FC_optional_2.weight.data.fill_(0.0)
+            self.top_FC_optional_2.bias.data.fill_(0.0)
+
+        self.top_preneckFC.weight.data.fill_(0.0)
+        self.top_preneckFC.bias.data.fill_(0.0)
 
         self.top_bottleneck = QuasiBinarizingLayer(num_top_latent, epsilon_per_dimension=epsilon)
 
-        self.top_norm2 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
+#        self.top_norm2 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
 
         self.top_postneckFC = nn.Linear(num_top_latent, prev_channels * (image_size//(2**(depth-1)))**2)
 
@@ -116,8 +152,8 @@ class UNet_QB(UNet):
             )
             prev_channels = 2 ** (wf + i)
 
-        self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
-        self.last_logvar = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
+        self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
+        self.last_logvar = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
         
 
     def forward_down(self, x):
@@ -155,22 +191,27 @@ class UNet_QB(UNet):
 
         return x, blocks, firing_rates, real_firing_rates, unnoised_z, z
 
-    def forward_up_without_last(self, x, blocks):
+    def forward_up_without_last(self, x, blocks, shortcut_multiplier = 1.0):
         for i, up in enumerate(self.up_path):
             skip = blocks[-i - 2]
-            x = up(x, skip)
+            x = up(x, skip * shortcut_multiplier)
 
         return x
 
-    def forward_without_last(self, x):
+    def forward_without_last(self, x, shortcut_multiplier = 1.0):
         x, blocks, firing_rates, real_firing_rates, unnoised_z, z = self.forward_down(x)
 
         # top bottleneck
         x_shape = x.shape
         x = x.reshape([x.shape[0], -1])
         x = self.top_preneckFC(x)
-        x = torch.nn.LeakyReLU(negative_slope=0.1)(x)
-        x = self.top_norm1(x)
+#        x = torch.nn.LeakyReLU(negative_slope=0.01)(x)
+#        x = self.top_norm1(x)
+
+#        x = self.top_norm_optional_1(x)
+#        x = self.top_FC_optional_1(x)
+
+#        x += self.top_preneck_bias
 
         res = self.top_bottleneck(x)
         x = res["x"]
@@ -180,16 +221,27 @@ class UNet_QB(UNet):
         unnoised_z.append(res["unnoised_x"])
         z.append(res["x"])
 
-        x = torch.nn.LeakyReLU(negative_slope=0.1)(x)
-        x = self.top_norm2(x)
+#        x = self.top_norm_optional_2(x)
+#        x = self.top_FC_optional_2(x)
+
+#        x = torch.nn.LeakyReLU(negative_slope=0.01)(x)
+#        x = self.top_norm2(x)
+
+#        x += self.top_postneck_bias
+
         x = self.top_postneckFC(x)
         x = x.reshape(x_shape)
 
-        x = self.forward_up_without_last(x, blocks)
+        x = self.forward_up_without_last(x, blocks, shortcut_multiplier = shortcut_multiplier)
         return x, firing_rates, real_firing_rates, unnoised_z, z
 
-    def forward(self, x):
-        x, firing_rates, real_firing_rates, unnoised_z, z = self.get_features(x)
+    def forward(self, x, shortcut_multiplier = 1.0):
+        # average subtraction
+        x = x - self.image_average_bias
+        x = x / self.image_std_bias
+
+        # main func
+        x, firing_rates, real_firing_rates, unnoised_z, z = self.get_features(x, shortcut_multiplier)
 
         # reconstruct firing_rates
         firing_rates = torch.stack(firing_rates, dim=1).mean(dim=1)
@@ -207,7 +259,7 @@ class UNet_QB(UNet):
         real_firing_rates = torch.where(unnoised_z > 0.5, 1.0, 0.0).mean(dim=1)
 
         return {
-            'x_hat': self.last(x), 
+            'x_hat': self.last(x) * self.image_std_bias + self.image_average_bias, 
             'log_var': self.last_logvar(x), 
             'firing_rate': firing_rates,
             'real_firing_rate': real_firing_rates,
@@ -215,8 +267,8 @@ class UNet_QB(UNet):
             'z': z
         }
 
-    def get_features(self, x):
-        return self.forward_without_last(x)
+    def get_features(self, x, shortcut_multiplier = 1.0):
+        return self.forward_without_last(x, shortcut_multiplier)
 
 
 class UNetConvBlock(nn.Module):

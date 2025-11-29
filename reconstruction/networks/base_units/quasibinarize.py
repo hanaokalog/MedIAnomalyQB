@@ -38,9 +38,9 @@ class QuasiBinarizingLayer(torch.nn.Module):
         real_firing_rate = torch.where(x > 0.5, 1.0, 0.0).mean(dim=1)
 
         # quasi-binarize (1-bit information bottle-neck) by Laplace mechanism
-        # using reparametrization trick
+        # using reparametrization trick?? <- no meaning because the probability distribution to be sampled is not dependent upon any network parameter
         if self.training:
-            x = x + self.laplace.rsample(x.shape).to(x.device)
+            x = x + self.laplace.sample(x.shape).to(x.device)
 
         # calculate the expected value of neuronal firing rate for each sample in minibatch
 #        clampedx = torch.clamp(x, 0.0, 1.0)

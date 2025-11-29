@@ -165,7 +165,7 @@ class BaseWorker:
         self.net = self.net.cuda()
 
     def set_optimizer(self):
-        self.optimizer = torch.optim.Adam(self.net.parameters(), self.opt.train['lr'],
+        self.optimizer = torch.optim.AdamW(self.net.parameters(), self.opt.train['lr'],
                                           weight_decay=self.opt.train['weight_decay'])
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
         #                                                             T_max=self.opt.train['epochs'],
