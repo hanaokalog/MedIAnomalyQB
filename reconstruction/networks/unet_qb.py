@@ -27,6 +27,26 @@ def get_groups(channels: int) -> int:
     return sorted(divisors)[len(divisors) // 2]
 
 
+
+class ParamAtan(nn.Module):
+    """
+    Parametrized arctangent activation:
+    y = alpha * atan(beta * x + gamma) + delta
+    All parameters are trainable.
+    """
+    def __init__(self, init_alpha=1.0, init_beta=1.0, init_gamma=0.0, init_delta=0.0):
+        super().__init__()
+        # Trainable parameters
+        self.alpha = nn.Parameter(torch.tensor(init_alpha, dtype=torch.float32))
+        self.beta = nn.Parameter(torch.tensor(init_beta, dtype=torch.float32))
+        self.gamma = nn.Parameter(torch.tensor(init_gamma, dtype=torch.float32))
+        self.delta = nn.Parameter(torch.tensor(init_delta, dtype=torch.float32))
+
+    def forward(self, x):
+        return self.alpha * torch.atan(self.beta * x + self.gamma) + self.delta
+
+
+
 class UNet_QB(UNet):
     def __init__(
             self,
@@ -44,7 +64,9 @@ class UNet_QB(UNet):
 #            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
             latent_sizes_per_pixel=(1,2,4,8,16),
             num_top_latent=4096,
-            using_heaviside=False
+            mid_channels_per_pixel = 32,
+            using_heaviside=False,
+            adding_noise_in_test=False
     ):
         """
         QuasiBinarization version of
@@ -78,6 +100,9 @@ class UNet_QB(UNet):
         self.image_size = image_size
         self.latent_sizes_per_pixel = latent_sizes_per_pixel
 
+        self._using_heaviside = using_heaviside
+        self._adding_noise_in_test = adding_noise_in_test
+
         self.image_average_bias = 1 # nn.Parameter(torch.tensor(np.zeros((1,in_channels,image_size,image_size), dtype=np.float32)))
         self.image_std_bias = 1 # nn.Parameter(torch.tensor(np.ones((1,in_channels,image_size,image_size), dtype=np.float32)))
 
@@ -98,7 +123,8 @@ class UNet_QB(UNet):
                     QuasiBinarizingLayer(
                         2 ** (wf + i) * (image_size//(2**i))**2, 
                         epsilon_per_dimension=epsilon,
-                        using_heaviside=using_heaviside
+                        using_heaviside=using_heaviside,
+                        adding_noise_in_test=adding_noise_in_test
                     )
                 )
                 self.postneckconvs.append(
@@ -112,7 +138,8 @@ class UNet_QB(UNet):
                     QuasiBinarizingLayer(
                         latent_sizes_per_pixel[i] * (image_size//(2**i))**2, 
                         epsilon_per_dimension=epsilon,
-                        using_heaviside=using_heaviside
+                        using_heaviside=using_heaviside,
+                        adding_noise_in_test=adding_noise_in_test
                     )
                 )
                 self.postneckconvs.append(
@@ -120,9 +147,11 @@ class UNet_QB(UNet):
                 )
             prev_channels = 2 ** (wf + i)
 
-        self.top_preneckFC = nn.Linear(prev_channels * (image_size//(2**(depth-1)))**2, num_top_latent)
+        self.top_prepreneckConv = nn.Conv2d(prev_channels,mid_channels_per_pixel, kernel_size=1, padding=0)
+        self.top_norm_interpre = nn.BatchNorm2d(mid_channels_per_pixel)
+        self.top_preneckFC = nn.Linear(mid_channels_per_pixel * (image_size//(2**(depth-1)))**2, num_top_latent)
 
-        if 1:
+        if 0:
 
             self.top_norm1 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
             self.top_norm_optional_1 = nn.GroupNorm(get_groups(num_top_latent), num_top_latent)
@@ -146,9 +175,15 @@ class UNet_QB(UNet):
             self.top_preneckFC.weight.data.fill_(0.0)
             self.top_preneckFC.bias.data.fill_(0.0)
 
-        self.top_bottleneck = QuasiBinarizingLayer(num_top_latent, epsilon_per_dimension=epsilon, using_heaviside=using_heaviside)
+        self.top_pre_batchnorm = nn.BatchNorm1d(num_top_latent)
 
-        self.top_postneckFC = nn.Linear(num_top_latent, prev_channels * (image_size//(2**(depth-1)))**2)
+        self.top_bottleneck = QuasiBinarizingLayer(num_top_latent, epsilon_per_dimension=epsilon, using_heaviside=using_heaviside, adding_noise_in_test=adding_noise_in_test)
+
+        self.patan = ParamAtan(init_beta=0.01)
+
+        self.top_postneckFC = nn.Linear(num_top_latent, mid_channels_per_pixel * (image_size//(2**(depth-1)))**2)
+        self.top_norm_interpost = nn.BatchNorm2d(mid_channels_per_pixel)
+        self.top_postpostneckConv = nn.Conv2d(mid_channels_per_pixel, prev_channels, kernel_size=1, padding=0)
 
         self.up_path = nn.ModuleList()
         for i in reversed(range(depth - 1)):
@@ -159,7 +194,32 @@ class UNet_QB(UNet):
 
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
         self.last_logvar = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
-        
+
+    #dynamic setter / getter (test-time behaviour selecter)
+
+    @property
+    def using_heaviside(self):
+        return self._using_heaviside
+    
+    @using_heaviside.setter
+    def using_heaviside(self, value):
+        assert isinstance(value, bool)
+        self._using_heaviside = value
+        for bottleneck in self.bottlenecks:
+            bottleneck.using_heaviside = value
+        self.top_bottleneck.using_heaviside = value
+
+    @property
+    def adding_noise_in_test(self):
+        return self._adding_noise_in_test
+    
+    @adding_noise_in_test.setter
+    def adding_noise_in_test(self, value):
+        assert isinstance(value, bool)
+        self._adding_noise_in_test = value
+        for bottleneck in self.bottlenecks:
+            bottleneck.adding_noise_in_test = value
+        self.top_bottleneck.adding_noise_in_test = value
 
     def forward_down(self, x):
 
@@ -207,11 +267,19 @@ class UNet_QB(UNet):
         x, blocks, firing_rates, real_firing_rates, unnoised_z, z = self.forward_down(x)
 
         # top bottleneck
+
+        x = self.top_prepreneckConv(x)
+        x = self.top_norm_interpre(x)
+        x = torch.nn.LeakyReLU(negative_slope=0.01)(x)
         x_shape = x.shape
+
         x = x.reshape([x.shape[0], -1])
         x = self.top_preneckFC(x)
+        x = self.top_pre_batchnorm(x)
         
-        if 1:
+        x_preneck = x
+
+        if 0:
             
             x = torch.nn.LeakyReLU(negative_slope=0.01)(x)
             x = self.top_norm1(x)
@@ -221,8 +289,6 @@ class UNet_QB(UNet):
 
             x += self.top_preneck_bias
 
-        x = x / 10.0
-
         res = self.top_bottleneck(x)
         x = res["x"]
 
@@ -231,7 +297,10 @@ class UNet_QB(UNet):
         unnoised_z.append(res["unnoised_x"])
         z.append(res["x"])
 
-        if 1:
+        if 0:
+            x = self.patan(x)
+
+        if 0:
             x = self.top_norm_optional_2(x)
             x = self.top_FC_optional_2(x)
 
@@ -242,11 +311,17 @@ class UNet_QB(UNet):
 
 
 
+        top_recon_loss = (torch.sum((x - x_preneck)**2, dim=1, keepdims=True)**.5).reshape((x_shape[0], 1, 1, 1))
+
+
         x = self.top_postneckFC(x)
         x = x.reshape(x_shape)
+        x = torch.nn.LeakyReLU(negative_slope=0.01)(x)
+        x = self.top_norm_interpost(x)
+        x = self.top_postpostneckConv(x)
 
         x = self.forward_up_without_last(x, blocks, shortcut_multiplier = shortcut_multiplier)
-        return x, firing_rates, real_firing_rates, unnoised_z, z
+        return x, firing_rates, real_firing_rates, unnoised_z, z, top_recon_loss
 
     def forward(self, x, shortcut_multiplier = 1.0):
         # average subtraction
@@ -254,7 +329,7 @@ class UNet_QB(UNet):
         x = x / self.image_std_bias
 
         # main func
-        x, firing_rates, real_firing_rates, unnoised_z, z = self.get_features(x, shortcut_multiplier)
+        x, firing_rates, real_firing_rates, unnoised_z, z, top_recon_loss = self.get_features(x, shortcut_multiplier)
 
         # reconstruct firing_rates
         firing_rates = torch.stack(firing_rates, dim=1).mean(dim=1)
@@ -273,11 +348,12 @@ class UNet_QB(UNet):
 
         return {
             'x_hat': self.last(x) * self.image_std_bias + self.image_average_bias, 
-            'log_var': self.last_logvar(x), 
+            'log_var': self.last_logvar(x) *0 +1, #!!!!!!!!!!!!!!!!!!!!!!!!
             'firing_rate': firing_rates,
             'real_firing_rate': real_firing_rates,
             'unnoised_z': unnoised_z,
-            'z': z
+            'z': z,
+            'top_recon_loss': top_recon_loss
         }
 
     def get_features(self, x, shortcut_multiplier = 1.0):

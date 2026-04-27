@@ -557,6 +557,10 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
 
     def forward(self, net_in, net_out, anomaly_score=False, keepdim=False, all_scores=False, force_firing=False, firing_cost_multiplier=None):
         x_hat, log_var = net_out['x_hat'], net_out['log_var']
+        
+#        log_var = torch.clamp(log_var, -5., 6.)
+#        x_hat = torch.clamp(x_hat, 0, 255)
+        
         recon_loss = (net_in - x_hat) ** 2
 
         loss1 = torch.exp(-log_var) * recon_loss
@@ -589,7 +593,7 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
             firing_loss2 = firing_loss2 * 1000.0 * self.firing_rate_cost_weight
             firing_loss += firing_loss2
 
-        if force_firing:
+        if 0: # force_firing:
 #            firing_rate_target = 0.25
 #            firing_loss2 = torch.abs(firing_rate_target - net_out['z'].mean(dim=[0], keepdim=True))**2  # Use the mean firing rate across the batch
             firing_loss2 = 0.0
@@ -599,9 +603,20 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
             firing_loss2 = firing_loss2 * 1000.0
             firing_loss += firing_loss2
 
+        if 0: # force_firing:
+            firing_rate_target = 0.1
+            firing_loss2 = 0.0
+            firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
+            firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
+            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+            firing_loss2 = firing_loss2 * 1000.0
+            firing_loss += firing_loss2
+
         loss += firing_loss #.expand_as(loss)
 
         loss1 += firing_loss #.expand_as(loss1)
+
+        loss += net_out['top_recon_loss'].expand_as(loss) * 0
 
         perceptual_loss = self.perceptual_loss_weight * self.perceptual_loss(net_in, net_out, anomaly_score=True, keepdim=False)
         assert perceptual_loss.dim() == 1, "Perceptual loss should be 1D (batch_size) for anomaly score calculation."

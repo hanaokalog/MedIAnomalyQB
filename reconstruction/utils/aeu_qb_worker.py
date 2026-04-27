@@ -5,6 +5,8 @@ from sklearn import metrics
 from utils.util import compute_best_dice
 import numpy as np
 
+import gzip
+
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
@@ -73,15 +75,22 @@ class AEU_QBWorker(AEUWorker):
         test_perceptual_losses = []
         test_firing_rates = []
         test_real_firing_rates = []
+        test_imgs_hat_for_compression = []
+        test_imgs_hat_for_LDP = []
         
         test_repts = []
+        test_repts_binary = []
         # with torch.no_grad():
         for idx_batch, data_batch in enumerate(self.test_loader):
             # test batch_size=1
             img, label, name = data_batch['img'], data_batch['label'], data_batch['name']
             img = img.cuda()
             img.requires_grad = self.grad_flag  # Will be True for gradient-based methods
-
+            
+            # vanilla settings
+            self.net.using_heaviside = False
+            self.net.adding_noise_in_test = False
+            
             net_out = self.net(img)
 
             test_firing_rate = net_out['firing_rate']
@@ -110,6 +119,29 @@ class AEU_QBWorker(AEUWorker):
                 
                 z = net_out['z']
                 test_repts.append(z.cpu().detach().numpy())
+            
+            if 1:
+                # outputs for image compression
+                self.net.using_heaviside = True
+                self.net.adding_noise_in_test = False
+                
+                net_out_for_compression = self.net(img)
+
+                test_imgs_hat_for_compression.append(net_out_for_compression['x_hat'].cpu())
+                test_repts_binary.append(net_out_for_compression['z'].cpu().detach().numpy())
+                
+                # outputs for local differential privacy output
+                self.net.using_heaviside = False
+                self.net.adding_noise_in_test = True
+                
+                net_out_for_LDP = self.net(img)
+
+                test_imgs_hat_for_LDP.append(net_out_for_LDP['x_hat'].cpu())
+                
+                self.net.using_heaviside = False
+                self.net.adding_noise_in_test = False
+
+
 
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
         test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
@@ -174,12 +206,26 @@ class AEU_QBWorker(AEUWorker):
 
         # reconstruction results
         test_imgs_first = torch.cat(test_imgs, dim=0)[0:4,:,:,:]
-        test_imgs_first_hat = torch.cat(test_imgs_hat, dim=0)[0:4,:,:,:]
         test_imgs_last = torch.cat(test_imgs, dim=0)[-5:-1,:,:,:]
-        test_imgs_last_hat = torch.cat(test_imgs_hat, dim=0)[-5:-1,:,:,:]
         test_imgs_ = torch.cat((test_imgs_first, test_imgs_last), dim=0)
+
+        test_imgs_first_hat = torch.cat(test_imgs_hat, dim=0)[0:4,:,:,:]
+        test_imgs_last_hat = torch.cat(test_imgs_hat, dim=0)[-5:-1,:,:,:]
         test_imgs_hat_ = torch.cat((test_imgs_first_hat, test_imgs_last_hat), dim=0)
-        img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_), dim=4)
+
+        if 1:
+            test_imgs_first_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[0:4,:,:,:]
+            test_imgs_last_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[-5:-1,:,:,:]
+            test_imgs_hat_for_compression_ = torch.cat((test_imgs_first_hat_for_compression, test_imgs_last_hat_for_compression), dim=0)
+
+            test_imgs_first_hat_for_LDP =  torch.cat(test_imgs_hat_for_LDP, dim=0)[0:4,:,:,:]
+            test_imgs_last_hat_for_LDP =  torch.cat(test_imgs_hat_for_LDP, dim=0)[-5:-1,:,:,:]
+            test_imgs_hat_for_LDP_ = torch.cat((test_imgs_first_hat_for_LDP, test_imgs_last_hat_for_LDP), dim=0)
+
+        if 1:
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
+        else:
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_), dim=4)
         img = torch.permute(img, (4,2,0,3,1))
         img = img.reshape((img.shape[0]*img.shape[1], img.shape[2]*img.shape[3], img.shape[4]))
         if(img.shape[2] == 1):
@@ -193,6 +239,21 @@ class AEU_QBWorker(AEUWorker):
                 assert(img.shape[2] == 3)
                 self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
+        if 1:
+            test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
+            test_repts_binary_ = np.concatenate((test_repts_binary[0:4], test_repts_binary[-5:-1]), axis=0)
+            # latent expression compression rate
+            original_image_bytes = len(test_imgs_.flatten())
+            original_repts_binary = test_repts_binary_.astype(bool).flatten().tobytes()
+            compressed_repts_binary = gzip.compress(original_repts_binary)
+            compressed_image_bytes = len(compressed_repts_binary)
+            ratio = compressed_image_bytes/original_image_bytes
+            print(f'compression/Ep{epoch} = {ratio} = {compressed_image_bytes} / {original_image_bytes}')
+            if self.logger is not None:
+                self.logger.log(step=epoch, data={f'gzip/original_size': original_image_bytes})
+                self.logger.log(step=epoch, data={f'gzip/compressed_size': compressed_image_bytes})
+                self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
+            
         # rept vsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
         normal_tsne = test_tsne[np.where(test_labels == 0)]
