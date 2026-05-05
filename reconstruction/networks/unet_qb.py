@@ -53,7 +53,7 @@ class UNet_QB(UNet):
             in_channels=1,
             n_classes=2,
             depth=5,
-            wf=6,
+            wf=4,
             padding=True,
             norm="group",
             up_mode='upconv',
@@ -61,8 +61,8 @@ class UNet_QB(UNet):
             epsilon=1.0, 
 #            latent_sizes_per_pixel=(1,2,4,8,16),
 #            latent_sizes_per_pixel=(4,8,16,32,64),
-#            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
-            latent_sizes_per_pixel=(1,2,4,8,16),
+            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
+#            latent_sizes_per_pixel=(1,2,4,8,16),
             num_top_latent=4096,
             mid_channels_per_pixel = 32,
             using_heaviside=False,
@@ -348,7 +348,7 @@ class UNet_QB(UNet):
 
         return {
             'x_hat': self.last(x) * self.image_std_bias + self.image_average_bias, 
-            'log_var': self.last_logvar(x) *0 +1, #!!!!!!!!!!!!!!!!!!!!!!!!
+            'log_var': self.last_logvar(x),
             'firing_rate': firing_rates,
             'real_firing_rate': real_firing_rates,
             'unnoised_z': unnoised_z,
