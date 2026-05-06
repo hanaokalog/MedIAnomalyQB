@@ -64,6 +64,8 @@ class Options:
         parser.add_argument('--firing_rate_cost_weight', type=float, default=0, help='quasibinarizer (by Shouhei Hanaoka) neuron firing rate penarizing factor. zero means no penalty')
         parser.add_argument('--perceptual_loss_weight', type=float, default=1, help='perceptual loss weight. zero means no perceptual loss')
 
+        parser.add_argument('--wf', type=int, default=4, help='number of filters in the first layer is 2**wf')
+
         args = parser.parse_args()
 
         self.gpu = args.gpu
@@ -81,6 +83,7 @@ class Options:
         self.model['firing_rate_cost_weight'] = args.firing_rate_cost_weight
         self.model['perceptual_loss_weight'] = args.perceptual_loss_weight
         self.model['heaviside'] = args.heaviside
+        self.model['wf'] = args.wf
 
         # Parameters only for reconstruction model
         self.model['base_width'] = args.base_width
