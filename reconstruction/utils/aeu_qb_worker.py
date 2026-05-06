@@ -4,6 +4,7 @@ import os
 from sklearn import metrics
 from utils.util import compute_best_dice
 import numpy as np
+import scipy.ndimage
 
 import gzip
 
@@ -16,13 +17,54 @@ from utils.util import AverageMeter
 
 import wandb
 
+
+
+def make_noise_like(x, sigma = 0.2):
+    
+    shape = x.size()
+    
+    assert(shape[3] == shape[2])
+    sz = shape[2]
+    d = shape[1]
+    num = shape[0]
+
+    res = np.zeros(num, d, sz, sz)
+
+    for i in range(num):
+
+        mother_std = x[i,:,:,:].std()
+
+        z1 = np.random.randn(sz,sz,d)
+        z2 = np.random.randn(sz,sz,1)
+
+        rad1 = np.random.rand()*16+1
+        rad2 = np.random.rand()*16+1
+
+        for dd in range(d):
+            z1[:,:,dd] = scipy.ndimage.gaussian_filter(z1[:,:,dd], rad1) 
+        z2 = scipy.ndimage.gaussian_filter(z2, rad2)
+
+        z1 /= z1.std()
+        z2 /= z2.std()
+
+        z2 = np.repeat(z2, d, axis=2)
+        z2 -= np.random.rand()*3
+
+        z = z1 * np.where(z2>0, z2, 0)
+
+        res[i,:,:,:] = z * mother_std * sigma
+
+    return torch.from_numpy(res.astype(np.float32)).clone()
+
+
+
 class AEU_QBWorker(AEUWorker):
     def __init__(self, opt):
         super(AEU_QBWorker, self).__init__(opt)
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
-    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0):
+    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
@@ -34,9 +76,15 @@ class AEU_QBWorker(AEUWorker):
         
         for idx_batch, data_batch in enumerate(self.train_loader):
             img = data_batch['img']
+            img_noised = img.clone()
+
             img = img.cuda()
 
-            net_out = self.net(img, shortcut_multiplier=shortcut_multiplier)
+            if 0 < noise_level:
+                img_noised += make_noise_like(img)
+                img_noised = img_noised.cuda()
+
+            net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
@@ -296,7 +344,7 @@ class AEU_QBWorker(AEUWorker):
             shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
 
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier)
+                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier, noise_level = self.opt.train['noise_level'])
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=True)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \

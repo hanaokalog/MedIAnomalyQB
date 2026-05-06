@@ -65,6 +65,7 @@ class Options:
         parser.add_argument('--perceptual_loss_weight', type=float, default=1, help='perceptual loss weight. zero means no perceptual loss')
 
         parser.add_argument('--wf', type=int, default=4, help='number of filters in the first layer is 2**wf')
+        parser.add_argument('--noise', type=float, default=0.0, help='denoising AE noise level (per image standard deviation)')
 
         args = parser.parse_args()
 
@@ -101,6 +102,8 @@ class Options:
         self.train['lr'] = args.train_lr
         self.train['weight_decay'] = args.train_weight_decay
         self.train['seed'] = args.train_seed
+
+        self.train['noise_level'] = args.noise
 
         # --- test parameters --- #
         self.test['save_flag'] = args.test_save_flag
