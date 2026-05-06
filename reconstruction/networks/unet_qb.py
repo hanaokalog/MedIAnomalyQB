@@ -63,7 +63,7 @@ class UNet_QB(UNet):
 #            latent_sizes_per_pixel=(4,8,16,32,64),
             latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
 #            latent_sizes_per_pixel=(1,2,4,8,16),
-            num_top_latent=4096,
+            num_top_latent=16384, # 4096,
             mid_channels_per_pixel = 32,
             using_heaviside=False,
             adding_noise_in_test=False
@@ -188,7 +188,7 @@ class UNet_QB(UNet):
         self.up_path = nn.ModuleList()
         for i in reversed(range(depth - 1)):
             self.up_path.append(
-                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm)
+                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0))
             )
             prev_channels = 2 ** (wf + i)
 
@@ -348,7 +348,7 @@ class UNet_QB(UNet):
 
         return {
             'x_hat': self.last(x) * self.image_std_bias + self.image_average_bias, 
-            'log_var': self.last_logvar(x/100000.0),
+            'log_var': self.last_logvar(x)/100.0,
             'firing_rate': firing_rates,
             'real_firing_rate': real_firing_rates,
             'unnoised_z': unnoised_z,
@@ -394,7 +394,7 @@ class UNetConvBlock(nn.Module):
 
 
 class UNetUpBlock(nn.Module):
-    def __init__(self, in_size, out_size, up_mode, padding, norm="group"):
+    def __init__(self, in_size, out_size, up_mode, padding, norm="group", islast=False):
         super(UNetUpBlock, self).__init__()
         if up_mode == 'upconv':
             self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2, stride=2)
@@ -404,7 +404,13 @@ class UNetUpBlock(nn.Module):
                 nn.Conv2d(in_size, out_size, kernel_size=1),
             )
 
-        self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm)
+        if not islast:
+            self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm)
+        else:
+            self.conv_block = nn.Sequential(
+                nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
+                nn.ReLU()
+            )
 
     def center_crop(self, layer, target_size):
         _, _, layer_height, layer_width = layer.size()
@@ -417,7 +423,6 @@ class UNetUpBlock(nn.Module):
         crop1 = self.center_crop(bridge, up.shape[2:])
         out = torch.cat([up, crop1], 1)
         out = self.conv_block(out)
-
         return out
 
 

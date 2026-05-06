@@ -19,7 +19,7 @@ import wandb
 
 
 
-def make_noise_like(x, sigma = 0.2):
+def make_noise_like(x, sigma = 1.0):
     
     shape = x.size()
     
@@ -28,11 +28,11 @@ def make_noise_like(x, sigma = 0.2):
     d = shape[1]
     num = shape[0]
 
-    res = np.zeros(num, d, sz, sz)
+    res = np.zeros((num, d, sz, sz))
 
     for i in range(num):
 
-        mother_std = x[i,:,:,:].std()
+        mother_std = x[i,:,:,:].std().detach().cpu().numpy()
 
         z1 = np.random.randn(sz,sz,d)
         z2 = np.random.randn(sz,sz,1)
@@ -48,11 +48,13 @@ def make_noise_like(x, sigma = 0.2):
         z2 /= z2.std()
 
         z2 = np.repeat(z2, d, axis=2)
-        z2 -= np.random.rand()*3
+        z2 -= np.random.rand()*2
+        z2 = np.where(z2>0, z2, 0)
+        z2 = z2 ** (np.random.rand()*2.0+0.01)
 
-        z = z1 * np.where(z2>0, z2, 0)
+        z = z1 * z2
 
-        res[i,:,:,:] = z * mother_std * sigma
+        res[i,:,:,:] = z.transpose((2,0,1)) * mother_std * sigma
 
     return torch.from_numpy(res.astype(np.float32)).clone()
 
@@ -64,7 +66,7 @@ class AEU_QBWorker(AEUWorker):
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
 
-    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0):
+    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0, epoch=0):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
@@ -81,10 +83,33 @@ class AEU_QBWorker(AEUWorker):
             img = img.cuda()
 
             if 0 < noise_level:
-                img_noised += make_noise_like(img)
+                img_noised += make_noise_like(img, noise_level)
                 img_noised = img_noised.cuda()
 
             net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
+
+            if idx_batch == 0 and epoch%5==1:
+                if self.logger is not None:
+                    if(img.shape[1] == 1):
+                        img_noised1 = img_noised[0,0,:,:]
+                        img_denoised1 = net_out["x_hat"][0,0,:,:]
+                        img_logvar1 = net_out["log_var"][0,0,:,:]
+                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.T[:,:,np.newaxis], caption=f'noised_Ep{epoch}', mode="L")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.T[:,:,np.newaxis], caption=f'denoised_Ep{epoch}', mode="L")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.T[:,:,np.newaxis], caption=f'logvar_Ep{epoch}', mode="L")})
+                    else:
+                        img_noised1 = img_noised[0,:,:,:]
+                        img_denoised1 = net_out["x_hat"][0,:,:,:]
+                        img_logvar1 = net_out["log_var"][0,:,:,:]
+                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.permute((0,1,2)), caption=f'noised_Ep{epoch}', mode="RGB")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.permute((0,1,2)), caption=f'denoised_Ep{epoch}', mode="RGB")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.permute((0,1,2)), caption=f'logvar_Ep{epoch}', mode="RGB")})
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
@@ -344,7 +369,7 @@ class AEU_QBWorker(AEUWorker):
             shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
 
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier, noise_level = self.opt.train['noise_level'])
+                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier, noise_level = self.opt.train['noise_level'], epoch=epoch)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=True)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \

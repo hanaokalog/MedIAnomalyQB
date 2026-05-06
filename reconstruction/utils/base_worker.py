@@ -261,6 +261,7 @@ class BaseWorker:
                        "batch_size": self.opt.train["batch_size"],
                        "lr": self.opt.train["lr"],
                        "weight_decay": self.opt.train["weight_decay"],
+                       "noise_level": self.opt.train["noise_level"],
                        "seed": self.seed,
 
                        "num_params": params,
