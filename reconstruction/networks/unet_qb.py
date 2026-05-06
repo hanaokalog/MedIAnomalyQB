@@ -348,7 +348,7 @@ class UNet_QB(UNet):
 
         return {
             'x_hat': self.last(x) * self.image_std_bias + self.image_average_bias, 
-            'log_var': torch.sigmoid(self.last_logvar(x))*10.0,
+            'log_var': self.last_logvar(x/100000.0),
             'firing_rate': firing_rates,
             'real_firing_rate': real_firing_rates,
             'unnoised_z': unnoised_z,
