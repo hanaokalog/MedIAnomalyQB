@@ -156,7 +156,8 @@ class BaseWorker:
                 image_size=self.opt.model['input_size'],
                 epsilon=self.opt.model['epsilon'],
                 using_heaviside=self.opt.model['heaviside'],
-                wf=self.opt.model['wf']
+                wf=self.opt.model['wf'],
+                using_identity_connection=self.opt.model['using_identity_connection']
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
@@ -256,6 +257,7 @@ class BaseWorker:
                        "epsilon": self.opt.model['epsilon'],
                        "firing_rate_cost_weight": self.opt.model['firing_rate_cost_weight'],
                        "perceptual_loss_weight": self.opt.model['perceptual_loss_weight'],
+                       "using_identity_connection": self.opt.model['using_identity_connection'],
 
                        "epochs": self.opt.train["epochs"],
                        "batch_size": self.opt.train["batch_size"],

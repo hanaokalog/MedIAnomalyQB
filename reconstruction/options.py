@@ -66,6 +66,7 @@ class Options:
 
         parser.add_argument('--wf', type=int, default=4, help='number of filters in the first layer is 2**wf')
         parser.add_argument('--noise', type=float, default=0.0, help='denoising AE noise level (per image standard deviation)')
+        parser.add_argument('--using_identity_connection', action='store_true')
 
         args = parser.parse_args()
 
@@ -93,6 +94,8 @@ class Options:
         self.model['ls'] = args.latent_size
         self.model['en_depth'] = args.en_depth
         self.model['de_depth'] = args.de_depth
+
+        self.model['using_identity_connection'] = args.using_identity_connection
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)

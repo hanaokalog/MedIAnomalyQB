@@ -66,7 +66,8 @@ class UNet_QB(UNet):
             num_top_latent=16384, # 4096,
             mid_channels_per_pixel = 32,
             using_heaviside=False,
-            adding_noise_in_test=False
+            adding_noise_in_test=False,
+            using_identity_connection=False
     ):
         """
         QuasiBinarization version of
@@ -113,7 +114,7 @@ class UNet_QB(UNet):
         self.down_path = nn.ModuleList()
         for i in range(depth):
             self.down_path.append(
-                UNetConvBlock(prev_channels, 2 ** (wf + i), padding, norm=norm)
+                UNetConvBlock(prev_channels, 2 ** (wf + i), padding, norm=norm, using_identity=using_identity_connection)
             )
             if latent_sizes_per_pixel[i] == 'identity':
                 self.preneckconvs.append(
@@ -361,7 +362,7 @@ class UNet_QB(UNet):
 
 
 class UNetConvBlock(nn.Module):
-    def __init__(self, in_size, out_size, padding, norm="group", kernel_size=3):
+    def __init__(self, in_size, out_size, padding, norm="group", kernel_size=3, using_identity=False):
         super(UNetConvBlock, self).__init__()
         block = []
         if padding:
@@ -388,8 +389,22 @@ class UNetConvBlock(nn.Module):
 
         self.block = nn.Sequential(*block)
 
+        self.in_size = in_size
+        self.out_size = out_size
+
+        self.using_identity = using_identity
+        if in_size != out_size:
+            self.shortcut = nn.Conv2d(in_size, out_size, kernel_size=1)
+            self.relu = nn.ReLU()
+
     def forward(self, x):
-        out = self.block(x)
+        if self.using_identity:
+            if self.in_size == self.out_size:
+                out = x + self.block(x)
+            else:
+                out = self.relu(self.shortcut(x)) + self.block(x)
+        else:
+            out = self.block(x)
         return out
 
 
