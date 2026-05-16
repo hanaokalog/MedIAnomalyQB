@@ -150,6 +150,9 @@ class AEU_QBWorker(AEUWorker):
         test_real_firing_rates = []
         test_imgs_hat_for_compression = []
         test_imgs_hat_for_LDP = []
+
+        test_l2_score_maps = []
+        test_l2_scores = []
         
         test_repts = []
         test_repts_binary = []
@@ -175,6 +178,8 @@ class AEU_QBWorker(AEUWorker):
             lossset = self.criterion(img, net_out, all_scores=True, force_firing=False)
             anomaly_score_map = lossset['anomaly_score_maps'].cpu().detach()  # Nx1xHxW
             test_score_maps.append(anomaly_score_map)
+            l2_anomaly_score_map = lossset['l2_anomaly_score_maps'].cpu().detach()  # Nx1xHxW
+            test_l2_score_maps.append(l2_anomaly_score_map)
 
             test_recon_losses += lossset["recon_losses"].cpu().detach().numpy().tolist()
             test_perceptual_losses += lossset["perceptual_losses"].cpu().detach().numpy().tolist()
@@ -219,6 +224,9 @@ class AEU_QBWorker(AEUWorker):
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
         test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
 
+        test_l2_score_maps = torch.cat(test_l2_score_maps, dim=0)  # Nx1xHxW
+        test_l2_scores = torch.mean(test_l2_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
+
         test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight
         test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight
 
@@ -233,8 +241,10 @@ class AEU_QBWorker(AEUWorker):
         ap_firing = metrics.average_precision_score(test_labels, test_scores_firing)
         ap_real_firing = metrics.average_precision_score(test_labels, test_scores_real_firing)
         ap_image_derived = metrics.average_precision_score(test_labels, test_image_derived_losses)
+        ap_l2 = metrics.average_precision_score(test_labels, test_l2_scores)
         auc_firing = metrics.roc_auc_score(test_labels, test_scores_firing)
         auc_image_derived = metrics.roc_auc_score(test_labels, test_image_derived_losses)
+        auc_l2 = metrics.roc_auc_score(test_labels, test_l2_scores)
         auc_real_firing = metrics.roc_auc_score(test_labels, test_scores_real_firing)
         auc_perceptual = metrics.roc_auc_score(test_labels, test_perceptual_losses)
         auc_recon = metrics.roc_auc_score(test_labels, test_recon_losses)
@@ -247,7 +257,9 @@ class AEU_QBWorker(AEUWorker):
                     'AUC_image_derived': auc_image_derived,
                     'AP_image_derived': ap_image_derived,
                     'AUC_perceptual': auc_perceptual,
-                    'AUC_recon': auc_recon
+                    'AUC_recon': auc_recon,
+                    'AP_l2': ap_l2,
+                    'AUC_l2': auc_l2
         }
         # pixel-level metrics
         if self.pixel_metric:
@@ -258,6 +270,13 @@ class AEU_QBWorker(AEUWorker):
                                             test_score_maps.cpu().numpy().reshape(-1))
             best_dice, best_thresh = compute_best_dice(test_score_maps.cpu().numpy(), test_masks.numpy())
             results.update({'PixAUC': pix_auc, 'PixAP': pix_ap, 'BestDice': best_dice, 'BestThresh': best_thresh})
+            # l2-only (w/o log_var, firing rate)
+            pix_ap_l2 = metrics.average_precision_score(test_masks.numpy().reshape(-1),
+                                                     test_l2_score_maps.cpu().numpy().reshape(-1))
+            pix_auc_l2 = metrics.roc_auc_score(test_masks.numpy().reshape(-1),
+                                            test_l2_score_maps.cpu().numpy().reshape(-1))
+            best_dice_l2, best_thresh_l2 = compute_best_dice(test_l2_score_maps.cpu().numpy(), test_masks.numpy())
+            results.update({'PixAUC_l2': pix_auc_l2, 'PixAP_l2': pix_ap_l2, 'BestDice_l2': best_dice_l2, 'BestThresh_l2': best_thresh_l2})
         else:
             test_masks = None
 
@@ -327,7 +346,7 @@ class AEU_QBWorker(AEUWorker):
                 self.logger.log(step=epoch, data={f'gzip/compressed_size': compressed_image_bytes})
                 self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
             
-        # rept vsne
+        # rept tsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
         normal_tsne = test_tsne[np.where(test_labels == 0)]
         abnormal_tsne = test_tsne[np.where(test_labels == 1)]

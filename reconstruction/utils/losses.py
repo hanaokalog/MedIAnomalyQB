@@ -549,17 +549,21 @@ class RelativePerceptualL1Loss(PerceptualLoss):
 
 
 class AEU_Perceptual_QBLoss(AEU_QBLoss):
-    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1):
+    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1, use_log_var=True):
         super(AEU_Perceptual_QBLoss, self).__init__(firing_rate_cost_weight)
         self.firing_rate_cost_weight = firing_rate_cost_weight
         self.perceptual_loss_weight = perceptual_loss_weight
         self.perceptual_loss = RelativePerceptualL1Loss()
+        self.use_log_var = use_log_var
 
-    def forward(self, net_in, net_out, anomaly_score=False, keepdim=False, all_scores=False, force_firing=False, firing_cost_multiplier=None):
+    def forward(self, net_in, net_out, anomaly_score=False, keepdim=False, all_scores=False, force_firing=False, firing_cost_multiplier=None, pure_l2_anomaly_score=False):
         x_hat, log_var = net_out['x_hat'], net_out['log_var']
         
 #        log_var = torch.clamp(log_var, -5., 6.)
 #        x_hat = torch.clamp(x_hat, 0, 255)
+        
+        if not self.use_log_var:
+            log_var = log_var * 0
         
         recon_loss = (net_in - x_hat) ** 2
 
@@ -618,35 +622,53 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
 
         loss += net_out['top_recon_loss'].expand_as(loss) * 0
 
-        perceptual_loss = self.perceptual_loss_weight * self.perceptual_loss(net_in, net_out, anomaly_score=True, keepdim=False)
-        assert perceptual_loss.dim() == 1, "Perceptual loss should be 1D (batch_size) for anomaly score calculation."
-        assert perceptual_loss.shape[0] == net_in.shape[0], \
-            "Perceptual loss batch size should match input batch size. Got {}, expected {}".format(
-                perceptual_loss.shape[0], net_in.shape[0])
+        if keepdim or all_scores:
 
-        assert perceptual_loss.shape[0] == loss.shape[0]
-        perceptual_loss = perceptual_loss.view(perceptual_loss.shape[0], 1, 1, 1)  # reshape to match loss dimensions
+            perceptual_loss = self.perceptual_loss_weight * self.perceptual_loss(net_in, net_out, anomaly_score=True, keepdim=True)
+            
+            loss += perceptual_loss
+            loss1 += perceptual_loss
 
-        loss += perceptual_loss #.expand_as(loss)
+            perceptual_loss = torch.mean(perceptual_loss, dim=[1, 2, 3], keepdim=True)
 
-        loss1 += perceptual_loss #.expand_as(loss1)
+        else:
+
+            perceptual_loss = self.perceptual_loss_weight * self.perceptual_loss(net_in, net_out, anomaly_score=True, keepdim=False)
+            assert perceptual_loss.dim() == 1, "Perceptual loss should be 1D (batch_size) for anomaly score calculation."
+            assert perceptual_loss.shape[0] == net_in.shape[0], \
+                "Perceptual loss batch size should match input batch size. Got {}, expected {}".format(
+                    perceptual_loss.shape[0], net_in.shape[0])
+
+            assert perceptual_loss.shape[0] == loss.shape[0]
+            perceptual_loss = perceptual_loss.view(perceptual_loss.shape[0], 1, 1, 1)  # reshape to match loss dimensions
+
+            loss += perceptual_loss #.expand_as(loss)
+
+            loss1 += perceptual_loss #.expand_as(loss1)
 
         if all_scores:
             return {
                 "losses": loss, 
+                "l2_losses": torch.mean(recon_loss, dim=[1, 2, 3]),
                 "recon_losses": torch.mean((torch.exp(-log_var) * recon_loss), dim=[1, 2, 3]),
                 "log_vars": torch.mean(log_var, dim=[1,2,3]),
                 "firing_losses": firing_loss.view([-1]),
                 "perceptual_losses": perceptual_loss.view([-1]),
                 "anomaly_score_maps": torch.mean(loss1, dim=[1], keepdim=True),
-                "anomaly_scores": torch.mean(loss1, dim=[1, 2, 3])
+                "anomaly_scores": torch.mean(loss1, dim=[1, 2, 3]),
+                "l2_anomaly_score_maps": torch.mean(recon_loss, dim=[1], keepdim=True),
+                "l2_anomaly_scores": torch.mean(recon_loss, dim=[1, 2, 3])
             }
         elif anomaly_score:
-            # calculate from loss1 (NOT loss)
-            return torch.mean(loss1, dim=[1], keepdim=True) if keepdim else torch.mean(loss1, dim=[1, 2, 3])
+            if pure_l2_anomaly_score:
+                return torch.mean(recon_loss, dim=[1], keepdim=True) if keepdim else torch.mean(recon_loss, dim=[1, 2, 3])
+            else:
+                # calculate from loss1 (NOT loss)
+                return torch.mean(loss1, dim=[1], keepdim=True) if keepdim else torch.mean(loss1, dim=[1, 2, 3])
         else:
             return {
                 "loss": loss.mean(), 
+                "l2_loss": recon_loss.mean(),
                 "recon_loss": (torch.exp(-log_var) * recon_loss).mean(),
                 "log_var": log_var.mean(),
                 "firing_loss": firing_loss.mean(),

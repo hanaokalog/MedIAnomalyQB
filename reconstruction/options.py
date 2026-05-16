@@ -65,8 +65,10 @@ class Options:
         parser.add_argument('--perceptual_loss_weight', type=float, default=1, help='perceptual loss weight. zero means no perceptual loss')
 
         parser.add_argument('--wf', type=int, default=4, help='number of filters in the first layer is 2**wf')
+        parser.add_argument('--latent_size_with_noise', type=int, default=4096, help='latent size for noised models')
         parser.add_argument('--noise', type=float, default=0.0, help='denoising AE noise level (per image standard deviation)')
         parser.add_argument('--using_identity_connection', action='store_true')
+        parser.add_argument('--not_use_log_var', action='store_true')
 
         args = parser.parse_args()
 
@@ -86,6 +88,7 @@ class Options:
         self.model['perceptual_loss_weight'] = args.perceptual_loss_weight
         self.model['heaviside'] = args.heaviside
         self.model['wf'] = args.wf
+        self.model['latent_size_with_noise'] = args.latent_size_with_noise
 
         # Parameters only for reconstruction model
         self.model['base_width'] = args.base_width
@@ -96,6 +99,7 @@ class Options:
         self.model['de_depth'] = args.de_depth
 
         self.model['using_identity_connection'] = args.using_identity_connection
+        self.model['not_use_log_var'] = args.not_use_log_var
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)
