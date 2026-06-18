@@ -288,13 +288,13 @@ class AEU_QBWorker(AEUWorker):
         # latent representaions
         test_repts = np.concatenate(test_repts, axis=0)  # Nxd
         plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
-        if self.logger is not None:
-            repts_img = np.stack((
-                np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
-                np.clip(test_repts[:,:]*2-0.5, 0., 1.), 
-                np.clip(test_repts[:,:]*2-0.0, 0., 1.)
-            ), axis=2)
-            self.logger.log(step=epoch, data={f'repts/Ep{epoch}': wandb.Image(repts_img, caption=f'repts_Ep{epoch}', mode='RGB')})
+        #if self.logger is not None:
+        #    repts_img = np.stack((
+        #        np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
+        #        np.clip(test_repts[:,:]*2-0.5, 0., 1.), 
+        #        np.clip(test_repts[:,:]*2-0.0, 0., 1.)
+        #    ), axis=2)
+        #    self.logger.log(step=epoch, data={f'repts/Ep{epoch}': wandb.Image(repts_img, caption=f'repts_Ep{epoch}', mode='RGB')})
 
         # reconstruction results
         test_imgs_first = torch.cat(test_imgs, dim=0)[0:4,:,:,:]
@@ -305,6 +305,20 @@ class AEU_QBWorker(AEUWorker):
         test_imgs_last_hat = torch.cat(test_imgs_hat, dim=0)[-5:-1,:,:,:]
         test_imgs_hat_ = torch.cat((test_imgs_first_hat, test_imgs_last_hat), dim=0)
 
+        if self.pixel_metric:
+            test_imgs_first_abnormal_score_map = test_score_maps[0:4,:,:,:]
+            test_imgs_last_abnormal_score_map = test_score_maps[-5:-1,:,:,:]
+            test_imgs_abnormal_score_map_ = torch.cat((test_imgs_first_abnormal_score_map, test_imgs_last_abnormal_score_map), dim=0)
+
+            test_imgs_first_mask = test_masks[0:4,:,:,:]
+            test_imgs_last_mask = test_masks[-5:-1,:,:,:]
+            test_imgs_mask_ = torch.cat((test_imgs_first_mask, test_imgs_last_mask), dim=0)
+
+            if test_imgs_.shape[1] == 3:
+                # color
+                test_imgs_abnormal_score_map_ = test_imgs_abnormal_score_map_.repeat(1,3,1,1,1)
+                test_imgs_mask_ = test_imgs_mask_.repeat(1,3,1,1,1)
+
         if 1:
             test_imgs_first_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[0:4,:,:,:]
             test_imgs_last_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[-5:-1,:,:,:]
@@ -314,10 +328,10 @@ class AEU_QBWorker(AEUWorker):
             test_imgs_last_hat_for_LDP =  torch.cat(test_imgs_hat_for_LDP, dim=0)[-5:-1,:,:,:]
             test_imgs_hat_for_LDP_ = torch.cat((test_imgs_first_hat_for_LDP, test_imgs_last_hat_for_LDP), dim=0)
 
-        if 1:
-            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
+        if self.pixel_metric:
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_abnormal_score_map_, test_imgs_mask_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
         else:
-            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_), dim=4)
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
         img = torch.permute(img, (4,2,0,3,1))
         img = img.reshape((img.shape[0]*img.shape[1], img.shape[2]*img.shape[3], img.shape[4]))
         if(img.shape[2] == 1):

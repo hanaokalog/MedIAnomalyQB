@@ -67,7 +67,8 @@ class UNet_QB(UNet):
             mid_channels_per_pixel = 32,
             using_heaviside=False,
             adding_noise_in_test=False,
-            using_identity_connection=False
+            using_identity_connection=False,
+            attention_gate=True
     ):
         """
         QuasiBinarization version of
@@ -189,12 +190,20 @@ class UNet_QB(UNet):
         self.up_path = nn.ModuleList()
         for i in reversed(range(depth - 1)):
             self.up_path.append(
-                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0))
+                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0), attention_gate=attention_gate)
             )
             prev_channels = 2 ** (wf + i)
 
-        self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
-        self.last_logvar = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
+        self.last = nn.Sequential(
+            nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1),
+        )
+        self.last_logvar = nn.Sequential(
+            nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1),
+        )
 
     #dynamic setter / getter (test-time behaviour selecter)
 
@@ -361,6 +370,76 @@ class UNet_QB(UNet):
         return self.forward_without_last(x, shortcut_multiplier)
 
 
+class CBAMCrossAttentionGate(nn.Module):
+    def __init__(self, F_g, F_l, F_int, reduction_ratio=16):
+        """
+        F_g: gate channel num
+        F_l: skip connection channel num
+        F_int: internal channel num
+        """
+        super(CBAMCrossAttentionGate, self).__init__()
+        
+        # 1. ゲート信号(g)とスキップ特徴(x)を同じチャネル空間(F_int)に投影
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+        
+        # 2. 融合した特徴に対するChannel Attention (CBAM形式)
+        self.mlp = nn.Sequential(
+            nn.Linear(F_int, F_int // reduction_ratio, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(F_int // reduction_ratio, F_int, bias=False)
+        )
+        
+        # 3. 融合した特徴に対するSpatial Attention (CBAM形式)
+        self.spatial_conv = nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False)
+        
+        # 最終的にスキップコネクション(F_l)のサイズに合わせる1x1畳み込みとシグモイド
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+        
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, x):
+        # g: [B, F_g, H, W] (Query)
+        # x: [B, F_l, H, W] (Key/Value)
+        
+        # 互いの特徴を線形変換して足し合わせる (融合空間への投影)
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi_input = self.relu(g1 + x1) # [B, F_int, H, W]
+        
+        # --- Channel Attention ---
+        # AvgPool と MaxPool を空間方向に適用
+        avg_pool = torch.mean(psi_input, dim=[2, 3]) # [B, F_int]
+        max_pool = torch.max(torch.max(psi_input, dim=2)[0], dim=2)[0] # [B, F_int]
+        # MLPを通して足し合わせ、シグモイドでチャネル重みを計算
+        channel_weight = torch.sigmoid(self.mlp(avg_pool) + self.mlp(max_pool)).unsqueeze(2).unsqueeze(3)
+        psi_input = psi_input * channel_weight
+        
+        # --- Spatial Attention ---
+        # チャネル方向に Avg と Max を計算して結合
+        avg_out = torch.mean(psi_input, dim=1, keepdim=True) # [B, 1, H, W]
+        max_out = torch.max(psi_input, dim=1, keepdim=True)[0] # [B, 1, H, W]
+        spatial_input = torch.cat([avg_out, max_out], dim=1) # [B, 2, H, W]
+        spatial_weight = torch.sigmoid(self.spatial_conv(spatial_input))
+        psi_input = psi_input * spatial_weight
+        
+        # 最終的な注意度マップ（0~1）を計算
+        attention_map = self.psi(psi_input) # [B, 1, H, W]
+        
+        # スキップコネクション特徴(x)にアテンションを適用
+        return (x * attention_map, g * (1-attention_map))
+
+
 class UNetConvBlock(nn.Module):
     def __init__(self, in_size, out_size, padding, norm="group", kernel_size=3, using_identity=False):
         super(UNetConvBlock, self).__init__()
@@ -409,7 +488,7 @@ class UNetConvBlock(nn.Module):
 
 
 class UNetUpBlock(nn.Module):
-    def __init__(self, in_size, out_size, up_mode, padding, norm="group", islast=False):
+    def __init__(self, in_size, out_size, up_mode, padding, norm="group", islast=False, attention_gate=True):
         super(UNetUpBlock, self).__init__()
         if up_mode == 'upconv':
             self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2, stride=2)
@@ -419,13 +498,14 @@ class UNetUpBlock(nn.Module):
                 nn.Conv2d(in_size, out_size, kernel_size=1),
             )
 
-        if not islast:
-            self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm)
+        self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm)
+
+        if attention_gate:
+            assert(in_size//2 == out_size)
+            conv_in_size = in_size//2
+            self.cbamcag = CBAMCrossAttentionGate(F_g=conv_in_size, F_l=conv_in_size, F_int=conv_in_size//2)
         else:
-            self.conv_block = nn.Sequential(
-                nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
-                nn.ReLU()
-            )
+            self.cbamcag = None
 
     def center_crop(self, layer, target_size):
         _, _, layer_height, layer_width = layer.size()
@@ -436,9 +516,17 @@ class UNetUpBlock(nn.Module):
     def forward(self, x, bridge):
         up = self.up(x)
         crop1 = self.center_crop(bridge, up.shape[2:])
+
+        if self.cbamcag is not None:
+            crop1, up = self.cbamcag(g=up, x=crop1)
+
         out = torch.cat([up, crop1], 1)
+        
         out = self.conv_block(out)
+        
         return out
+
+
 
 
 if __name__ == '__main__':
