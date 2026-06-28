@@ -10,10 +10,15 @@ import gzip
 
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from sklearn.svm import OneClassSVM
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 
 from utils.ae_worker import AEWorker
 from utils.aeu_worker import AEUWorker
 from utils.util import AverageMeter
+
+import utils.compressor
 
 import wandb
 
@@ -139,6 +144,88 @@ class AEU_QBWorker(AEUWorker):
     def evaluate(self, epoch='test'):
         self.net.eval()
         self.close_network_grad()
+
+        # calculate training_firing_rates from training dataset
+
+        # pass 1
+        firing_count = None
+        count = 0
+        losses = []
+        losses_recon = []
+        losses_logvar = []
+        losses_firing = []
+        losses_perceptual = []
+        for idx_batch, data_batch in enumerate(self.train_loader):
+            # binary latent
+            self.net.using_heaviside = True
+            self.net.adding_noise_in_test = False
+
+            img = data_batch['img']
+            img = img.cuda()
+
+            net_out = self.net(img)
+
+            # count firings
+            firing = net_out["z"]
+            firing_partial_count = torch.sum(firing, dim=0, keepdim=True)
+            if firing_count is None:
+                firing_count = torch.zeros_like(firing_partial_count)
+            firing_count += firing_partial_count
+
+            loss_etc = self.criterion(img, net_out, force_firing=False, firing_cost_multiplier=1.0)
+            losses.append(loss_etc['loss'])
+            losses_recon.append(loss_etc['recon_loss'])
+            losses_logvar.append(loss_etc['log_var'])
+            losses_firing.append(loss_etc['firing_loss'])
+            losses_perceptual.append(loss_etc['perceptual_loss'])
+
+            count += 1
+
+        training_firing_rates = (firing_count / count).flatten()
+
+        # pass 2
+        encoded_lengths = []
+        for idx_batch, data_batch in enumerate(self.train_loader):
+            # binary latent
+            self.net.using_heaviside = True
+            self.net.adding_noise_in_test = False
+
+            img = data_batch['img']
+            img = img.cuda()
+
+            net_out = self.net(img)
+
+            firing = net_out["z"]
+
+            # calculate lengths
+            encoded_lengths_batch = []
+            for i in range(firing.shape[0]):
+                encoded = utils.compressor.encode(
+                    firing[i, :].cpu().detach().numpy(), 
+                    training_firing_rates.cpu().detach().numpy()
+                )
+                encoded_lengths_batch.append(len(encoded))
+            
+            encoded_lengths.append(np.array(encoded_lengths_batch))
+
+        # make list
+        train_losses_recon = torch.cat(losses_recon, dim=0)
+        train_losses_logvar = torch.cat(losses_logvar, dim=0)
+        train_losses_perceptual = torch.cat(losses_perceptual, dim=0)
+        train_encoded_lengths = torch.cat(encoded_lengths, dim=0)
+
+
+
+        # build an one-class SVM
+        train_metafeatures = torch.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths), dim=1)
+
+        oneclassmodel = make_pipeline(StandardScaler(), OneClassSVM())
+
+        oneclassmodel.fit(ss.transform(train_metafeatures))
+
+
+
+        # test
 
         test_imgs, test_imgs_hat, test_scores, test_score_maps, test_names, test_labels, test_masks = \
             [], [], [], [], [], [], []
@@ -345,8 +432,8 @@ class AEU_QBWorker(AEUWorker):
                 assert(img.shape[2] == 3)
                 self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
-        if 1:
-            test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
+        test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
+        if 0:
             test_repts_binary_ = np.concatenate((test_repts_binary[0:4], test_repts_binary[-5:-1]), axis=0)
             # latent expression compression rate
             original_image_bytes = len(test_imgs_.flatten())
@@ -360,11 +447,44 @@ class AEU_QBWorker(AEUWorker):
                 self.logger.log(step=epoch, data={f'gzip/compressed_size': compressed_image_bytes})
                 self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
             
+        # latent expression compression with arithmetic coding
+        if 1:
+            encoded_length = []
+            for i in range(test_repts_binary.shape[0]):
+                encoded = utils.compressor.encode(test_repts_binary[i, :], training_firing_rates.cpu().detach().numpy())
+                encoded_length.append(len(encoded))
+            
+            encoded_length = np.array(encoded_length)
+            
+            auc_encoded_length = metrics.roc_auc_score(test_labels, encoded_length)
+            ap_encoded_length = metrics.average_precision_score(test_labels, encoded_length)
+
+            # seek the best model
+            auc_trials = []
+            ratios = 10 ** np.linspace(-10, 10, 200)
+            for ratio in ratios:
+                test_scores_trial = encoded_length * ratio + test_scores
+                auc_trials.append(metrics.roc_auc_score(test_labels, test_scores_trial))
+
+            auc_best = np.max(np.array(auc_trials))
+            best_ratio = ratios[np.argmax(np.array(auc_trials))]
+
+            results.update({'auc_best': auc_best, 'best_ratio': best_ratio, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+
+        # ocsvm
+        test_metafeatures = torch.stack((test_recon_losses, test_perceptual_losses, encoded_length), dim=1)
+        test_metascores = - oneclassmodel.decision_function(test_metafeatures)
+        auc_ocsvm = metrics.roc_auc_score(test_labels, test_metascores)
+        ap_ocsvm = metrics.average_precision_score(test_labels, test_metascores)
+
+        results.update({'auc_ocsvm': auc_ocsvm, 'ap_ocsvm': ap_ocsvm})
+
+
+
         # rept tsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
         normal_tsne = test_tsne[np.where(test_labels == 0)]
         abnormal_tsne = test_tsne[np.where(test_labels == 1)]
-        plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams.update({'font.size': 14})
         plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
         plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
@@ -388,6 +508,7 @@ class AEU_QBWorker(AEUWorker):
             np.save(os.path.join(self.opt.train['save_dir'], 'test_scores_real_firing.npy'), test_scores_real_firing)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_perceptual_losses.npy'), test_perceptual_losses)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_recon_losses.npy'), test_recon_losses)
+            np.save(os.path.join(self.opt.train['save_dir'], 'encoded_length.npy'), encoded_length)
 
         self.enable_network_grad()
         return results

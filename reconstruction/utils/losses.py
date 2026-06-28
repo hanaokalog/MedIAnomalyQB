@@ -616,6 +616,16 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
             firing_loss2 = firing_loss2 * 1000.0
             firing_loss += firing_loss2
 
+        if 0: # force_firing:
+            firing_rate_target = 0.1
+            firing_loss2 = 0.0
+            firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
+            firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
+            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+            firing_loss2 = firing_loss2 * 1000.0
+            firing_loss += firing_loss2
+            
+
         loss += firing_loss #.expand_as(loss)
 
         loss1 += firing_loss #.expand_as(loss1)
