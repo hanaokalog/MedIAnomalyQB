@@ -13,7 +13,7 @@ from sklearn.pipeline import make_pipeline
 
 
 
-def seek_best_clasifier(train_metafeaures, test_metafeatures, test_labels, nfew = 10):
+def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew = 10):
 
     results = []
 
@@ -112,7 +112,7 @@ def seek_best_clasifier(train_metafeaures, test_metafeatures, test_labels, nfew 
     ####
     # learnable (with n-fold CV) 
     
-    skf = StratifiedKFold(np.minimum(5, nfew_positive), random_state=42)
+    skf = StratifiedKFold(np.minimum(5, nfew_positive), shuffle=True, random_state=42)
     
     #Maharanobis ratio
     assert mcd is not None

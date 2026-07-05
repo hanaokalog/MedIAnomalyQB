@@ -425,19 +425,6 @@ class AEU_QBWorker(AEUWorker):
                 self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
         test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
-        if 0:
-            test_repts_binary_ = np.concatenate((test_repts_binary[0:4], test_repts_binary[-5:-1]), axis=0)
-            # latent expression compression rate
-            original_image_bytes = len(test_imgs_.flatten())
-            original_repts_binary = test_repts_binary_.astype(bool).flatten().tobytes()
-            compressed_repts_binary = gzip.compress(original_repts_binary)
-            compressed_image_bytes = len(compressed_repts_binary)
-            ratio = compressed_image_bytes/original_image_bytes
-            print(f'compression/Ep{epoch} = {ratio} = {compressed_image_bytes} / {original_image_bytes}')
-            if self.logger is not None:
-                self.logger.log(step=epoch, data={f'gzip/original_size': original_image_bytes})
-                self.logger.log(step=epoch, data={f'gzip/compressed_size': compressed_image_bytes})
-                self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
             
         # latent expression compression with arithmetic coding
         encoded_length = []
@@ -456,9 +443,9 @@ class AEU_QBWorker(AEUWorker):
         np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
         np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
         
-        auc_best, method_best = fewshot_classifiers.seek_best_clasifier(train_metafeatures, test_metafeatures, test_labels)
+        auc_fewshot, method_fewshot = utils.fewshot_classifiers.seek_best_classifier(train_metafeatures, test_metafeatures, test_labels)
 
-        results.update({'auc_best': auc_best, 'method_best': method_best, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+        results.update({'auc_fewshot': auc_fewshot, 'method_fewshot': method_fewshot, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
 
 
 
