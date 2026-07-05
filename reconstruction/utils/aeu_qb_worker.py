@@ -19,6 +19,7 @@ from utils.aeu_worker import AEUWorker
 from utils.util import AverageMeter
 
 import utils.compressor
+import utils.fewshot_classifiers
 
 import wandb
 
@@ -152,8 +153,6 @@ class AEU_QBWorker(AEUWorker):
         count = 0
         losses = []
         losses_recon = []
-        losses_logvar = []
-        losses_firing = []
         losses_perceptual = []
         for idx_batch, data_batch in enumerate(self.train_loader):
             # binary latent
@@ -172,12 +171,9 @@ class AEU_QBWorker(AEUWorker):
                 firing_count = torch.zeros_like(firing_partial_count)
             firing_count += firing_partial_count
 
-            loss_etc = self.criterion(img, net_out, force_firing=False, firing_cost_multiplier=1.0)
-            losses.append(loss_etc['loss'])
-            losses_recon.append(loss_etc['recon_loss'])
-            losses_logvar.append(loss_etc['log_var'])
-            losses_firing.append(loss_etc['firing_loss'])
-            losses_perceptual.append(loss_etc['perceptual_loss'])
+            loss_etc = self.criterion(img, net_out, all_scores=True, force_firing=False, firing_cost_multiplier=1.0)
+            losses_recon.append(loss_etc['recon_losses'])
+            losses_perceptual.append(loss_etc['perceptual_losses'])
 
             count += 1
 
@@ -198,30 +194,26 @@ class AEU_QBWorker(AEUWorker):
             firing = net_out["z"]
 
             # calculate lengths
-            encoded_lengths_batch = []
             for i in range(firing.shape[0]):
                 encoded = utils.compressor.encode(
                     firing[i, :].cpu().detach().numpy(), 
                     training_firing_rates.cpu().detach().numpy()
                 )
-                encoded_lengths_batch.append(len(encoded))
-            
-            encoded_lengths.append(np.array(encoded_lengths_batch))
+                encoded_lengths.append(len(encoded))
 
         # make list
-        train_losses_recon = torch.cat(losses_recon, dim=0)
-        train_losses_logvar = torch.cat(losses_logvar, dim=0)
-        train_losses_perceptual = torch.cat(losses_perceptual, dim=0)
-        train_encoded_lengths = torch.cat(encoded_lengths, dim=0)
+        train_losses_recon = torch.cat(losses_recon, dim=0).cpu().detach().numpy()
+        train_losses_perceptual = torch.cat(losses_perceptual, dim=0).cpu().detach().numpy()
+        train_encoded_lengths = np.array(encoded_lengths)
 
 
 
         # build an one-class SVM
-        train_metafeatures = torch.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths), dim=1)
+        train_metafeatures = np.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths), axis=1)
 
         oneclassmodel = make_pipeline(StandardScaler(), OneClassSVM())
 
-        oneclassmodel.fit(ss.transform(train_metafeatures))
+        oneclassmodel.fit(train_metafeatures)
 
 
 
@@ -448,36 +440,25 @@ class AEU_QBWorker(AEUWorker):
                 self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
             
         # latent expression compression with arithmetic coding
-        if 1:
-            encoded_length = []
-            for i in range(test_repts_binary.shape[0]):
-                encoded = utils.compressor.encode(test_repts_binary[i, :], training_firing_rates.cpu().detach().numpy())
-                encoded_length.append(len(encoded))
-            
-            encoded_length = np.array(encoded_length)
-            
-            auc_encoded_length = metrics.roc_auc_score(test_labels, encoded_length)
-            ap_encoded_length = metrics.average_precision_score(test_labels, encoded_length)
+        encoded_length = []
+        for i in range(test_repts_binary.shape[0]):
+            encoded = utils.compressor.encode(test_repts_binary[i, :], training_firing_rates.cpu().detach().numpy())
+            encoded_length.append(len(encoded))
+        
+        encoded_length = np.array(encoded_length)
+        
+        auc_encoded_length = metrics.roc_auc_score(test_labels, encoded_length)
+        ap_encoded_length = metrics.average_precision_score(test_labels, encoded_length)
 
-            # seek the best model
-            auc_trials = []
-            ratios = 10 ** np.linspace(-10, 10, 200)
-            for ratio in ratios:
-                test_scores_trial = encoded_length * ratio + test_scores
-                auc_trials.append(metrics.roc_auc_score(test_labels, test_scores_trial))
+        # seek the best model
+        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, encoded_length), axis=1)
 
-            auc_best = np.max(np.array(auc_trials))
-            best_ratio = ratios[np.argmax(np.array(auc_trials))]
+        np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
+        np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
+        
+        auc_best, method_best = fewshot_classifiers.seek_best_clasifier(train_metafeatures, test_metafeatures, test_labels)
 
-            results.update({'auc_best': auc_best, 'best_ratio': best_ratio, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
-
-        # ocsvm
-        test_metafeatures = torch.stack((test_recon_losses, test_perceptual_losses, encoded_length), dim=1)
-        test_metascores = - oneclassmodel.decision_function(test_metafeatures)
-        auc_ocsvm = metrics.roc_auc_score(test_labels, test_metascores)
-        ap_ocsvm = metrics.average_precision_score(test_labels, test_metascores)
-
-        results.update({'auc_ocsvm': auc_ocsvm, 'ap_ocsvm': ap_ocsvm})
+        results.update({'auc_best': auc_best, 'method_best': method_best, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
 
 
 
@@ -519,7 +500,7 @@ class AEU_QBWorker(AEUWorker):
         t0 = time.time()
         for epoch in range(1, num_epochs + 1):
 
-            firing_cost_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
+            firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
             shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
 
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
