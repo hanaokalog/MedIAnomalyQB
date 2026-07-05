@@ -27,6 +27,8 @@ def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew
     nfew_negative = nfew * 10 # from training datase
     nfew_positive = nfew      # from test dataset
 
+    random.seed(42)
+
     # pickup positives from test dataset
     indices_positive = [i for i in range(len(label_original_test)) if label_original_test[i]==1]
     indices_positive_fewshot = random.sample(indices_positive, nfew_positive) # extract nfew positives
@@ -160,8 +162,8 @@ def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew
             svm_trial = sklearn.svm.SVC(class_weight='balanced', C=C)
             pipe = make_pipeline(StandardScaler(), svm_trial)
             pipe.fit(
-                np.concatenate((metaf_validation[train_index, :], metaf_original_train), axis=0),
-                np.concatenate((label_validation[train_index   ], label_original_train), axis=0)
+                np.concatenate((metaf_validation[train_index, :], metaf_training), axis=0),
+                np.concatenate((label_validation[train_index   ], label_training), axis=0)
             )
             score = roc_auc_score(label_validation[test_index], pipe.decision_function(metaf_validation[test_index,:]))
             scores.append(score)
@@ -182,8 +184,8 @@ def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew
     for train_index, test_index in skf.split(metaf_validation, label_validation):
         rf_trial = sklearn.ensemble.RandomForestClassifier()
         rf_trial.fit(
-            np.concatenate((metaf_validation[train_index, :], metaf_original_train), axis=0),
-            np.concatenate((label_validation[train_index   ], label_original_train), axis=0)
+                np.concatenate((metaf_validation[train_index, :], metaf_training), axis=0),
+                np.concatenate((label_validation[train_index   ], label_training), axis=0)
         )
         score = roc_auc_score(label_validation[test_index], rf_trial.predict_proba(metaf_validation[test_index,:])[:,1])
         scores.append(score)
@@ -203,12 +205,13 @@ def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew
     # select the best classifier
     df = pd.DataFrame.from_records(results)
     
+    bestscore_validation = np.max(df["validation"].values)
     bestindex = np.argmax(df["validation"].values)
-    bestscore = df["test"][bestindex]
+    bestscore_test = df["test"][bestindex]
     bestmethod = df["name"][bestindex]
     
-    print(f"best = %08.8f (%s)" % (bestscore, bestmethod))
+    print(f"best = %08.8f (%s)" % (bestscore_test, bestmethod))
     
     print(df)
 
-    return bestscore, bestindex
+    return bestscore_validation, bestscore_test, bestindex

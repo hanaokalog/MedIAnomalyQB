@@ -71,6 +71,10 @@ class AEU_QBWorker(AEUWorker):
         super(AEU_QBWorker, self).__init__(opt)
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
+        self.auc_fewshot_validation = 0
+        self.auc_fewshot_test = 0
+        self.method_best_fewshot = 0
+        self.epoch_best_fewshot = 0
 
     def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0, epoch=0):
         self.net.train()
@@ -443,9 +447,16 @@ class AEU_QBWorker(AEUWorker):
         np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
         np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
         
-        auc_fewshot, method_fewshot = utils.fewshot_classifiers.seek_best_classifier(train_metafeatures, test_metafeatures, test_labels)
+        auc_fewshot_validation, auc_fewshot_test, method_best_fewshot = utils.fewshot_classifiers.seek_best_classifier(train_metafeatures, test_metafeatures, test_labels)
 
-        results.update({'auc_fewshot': auc_fewshot, 'method_fewshot': method_fewshot, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+        if self.auc_fewshot_validation < auc_fewshot_validation:
+            # improved; update
+            self.auc_fewshot_validation = auc_fewshot_validation
+            self.auc_fewshot_test = auc_fewshot_test
+            self.method_best_fewshot = method_best_fewshot
+            self.epoch_best_fewshot = epoch
+
+        results.update({'auc_fewshot': self.auc_fewshot_test, 'method_best_fewshot': self.method_best_fewshot, 'epoch_best_fewshot': self.epoch_best_fewshot, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
 
 
 
