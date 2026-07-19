@@ -95,6 +95,8 @@ class AEU_QBWorker(AEUWorker):
             if 0 < noise_level:
                 img_noised += make_noise_like(img, noise_level)
                 img_noised = img_noised.cuda()
+            else:
+                img_noised = img.cuda()
 
             net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
 

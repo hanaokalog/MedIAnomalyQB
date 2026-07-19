@@ -34,7 +34,7 @@ def seek_best_classifier(train_metafeaures, test_metafeatures, test_labels, nfew
     indices_positive_fewshot = random.sample(indices_positive, nfew_positive) # extract nfew positives
     indices_test_rest = [i for i in range(len(label_original_test)) if i not in indices_positive_fewshot]
     
-    #pickp negatives from train dataset
+    # pickup negatives from train dataset
     indices_negative = [i for i in range(len(label_original_train)) if label_original_train[i]==0]
     indices_negative_fewshot = random.sample(indices_negative, nfew_negative) # extract nfew negatives
     indices_train_rest = [i for i in range(len(label_original_train)) if i not in indices_negative_fewshot]    
