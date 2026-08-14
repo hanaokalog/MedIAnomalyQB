@@ -21,17 +21,13 @@ import scipy.stats as st
 
 
 
-__multiplier = 10
-
-
-
 class BestModelSelector():
     def __init__(self, n_fewshot : int):
         self.N = n_fewshot
         self.data = []
         self.best_test_score = -np.inf
     
-    def add(description : str, fewshot_scores : list[float], test_score : float):
+    def add(self, description : str, fewshot_scores : list[float], test_score : float):
         # input:
         #   description     description of the experiment
         #   fewshot_scores  [AUROC with (all negatives + i-th positive) dataset] for all i in 1...N  larger is better
@@ -44,28 +40,37 @@ class BestModelSelector():
         })
         
         self.best_test_score = np.maximum(self.best_test_score, test_score)
+
     
-    def get_current_best():
+    def get_current_best(self):
         # calculate ranks
-        rank_matrix = np.ndarray(self.N, len(self.data))
+        rank_matrix = np.ndarray((self.N, len(self.data)))
         
-        for j, d in enumerate(self.data)):
+        for j, d in enumerate(self.data):
             rank_matrix[:, j] = d["fewshot_scores"]
+            self.data[j]["best"] = ""
         
         for i in range(self.N):
-            rank_matrix[i, :] = np.argsort(np.argsort(rank_matrix[i, :]))
+            rank_matrix[i, :] = np.argsort(np.argsort(-rank_matrix[i, :]))
         
         # calculate sum rank
-        avg_rank = np.sum(rank_matrix, axis=0)
+        avg_rank = np.average(rank_matrix, axis=0)
+        
+        for j, d in enumerate(self.data):
+            self.data[j]["avg_rank"] = avg_rank[j]
         
         # best model
-        best_j = np.argmax(avg_rank)
+        best_j = np.argmin(avg_rank)
+        self.data[best_j]["best"] = "*"
+        
+        df = pd.DataFrame.from_records(self.data)
+        print(df)
         
         # output the best classifier/model with its test-dataset score
         return {
-            "best_model_descriptor": self.data[best_j].description,
-            "best_avg_rank": np.max(avg_rank),
-            "test_score_with_the_best": self.data[best_j].test_score,
+            "best_model_descriptor": self.data[best_j]["description"],
+            "best_avg_rank": np.min(avg_rank),
+            "test_score_with_the_best": self.data[best_j]["test_score"],
             "peeked_current_real_best_test_score": self.best_test_score
         }
 
@@ -83,60 +88,57 @@ class FewshotClassifierTester():
         
         assert(np.all(train_labels == 0))
         
-        #integrate train and test datasets
-        self.n_total = len(train_labels) + len(test_labels)
-        self.labels = np.concatenate((train_labels, test_labels), axis=0)
-        
         random.seed(random_seed)
 
         # build integrated binary and index set
 
-        # pickup N positives from the test data (for LOO)
-        self.indices_positive_in_test = np.where(test_labels!=0)
-        self.indices_validatortrainer_in_test = random.sample(indices_positive_in_test, self.N)
-        self.indices_tester_in_test = np.array(
-            [
-                ii for ii in np.arange(len(test_labels)) if not in self.indices_validatortrainer_in_test
-            ]
-        )
+        # pickup N positives from the test data
+        self.indices_positive_in_test = np.where(test_labels!=0)[0]
+        self.indices_positive_in_test_partial = np.array(random.sample(list(self.indices_positive_in_test), self.N))
 
-        # pickup N*10 negatives from the train data (for LOO)
-        self.indices_negative_in_train = np.where(train_labels==0)
-        self.indices_validatortrainer_in_train = random.sample(indices_negative_in_train, self.N * __multiplier)
-        self.indices_trainer_in_train = np.array(
-            [
-                ii for ii in np.arange(len(train_labels)) if not in self.indices_validatortrainer_in_train
-            ]
-        )
+        # pickup half negatives from the train data
+        self.indices_negative_in_train = np.where(train_labels==0)[0]
+        self.indices_negative_in_train_partial = np.array(random.sample(list(self.indices_negative_in_train), len(list(self.indices_negative_in_train))//2))
 
+        #integrate train and test datasets
         self.n_train = len(train_labels)
         self.n_test = len(test_labels)
+        self.n_total = self.n_train + self.n_test
+        self.labels = np.concatenate((train_labels, test_labels), axis=0)
+        
+        # binarize indices
+        def binarize(indices):
+            barr = np.zeros((self.n_total,), dtype=bool)
+            barr[indices] = True
+            return barr
 
-        # for base train (not for LOO)
-        self.bool_train_rest = np.array(
-            [
-                (ii not in self.indices_validatortrainer_in_train) 
-                    for ii in np.arange(self.n_train)
-            ] + [0,]*self.n_test
-        ).astype(np.bool)
+        # indexer
+        def indexer(binaries):
+            return np.where(binaries!=0)[0]
 
-        # for base test (not for LOO)
-        self.bool_test_rest = np.array(
-            [0,]*self.n_train + [
-                (ii not in self.indices_validatortrainer_in_test) 
-                    for ii in np.arange(self.n_test)
-            ]
-        ).astype(np.bool)
+        # negator
+        def negate(indices):
+            return indexer(np.logcal_not(binarize(indices)))
 
-        # not for LOO verification
-        self.bool_rest = self.bool_train_rest | self.bool_test_rest
+        self.bool_test = np.array([0,]*self.n_train + [1,]*self.n_test)
+        self.bool_train = np.logical_not(self.bool_test)
 
-        # samples removed from original train dataset
-        self.indices_few =  np.arange(self.n_total)[self.indices_validatortrainer_in_train]
+       # indexing
+        self.indices_fewshot = np.array(self.indices_positive_in_test_partial) + self.n_train
+        self.indices_genuine_test = indexer(np.logical_and(np.logical_not(binarize(self.indices_fewshot)), self.bool_test))
+        self.indices_train1_for_loo_evaluation = self.indices_negative_in_train_partial
+        self.indices_train2_for_loo_training = indexer(np.logical_and(np.logical_not(binarize(self.indices_train1_for_loo_evaluation)), self.bool_train))
 
-        # final trainable set (not for LOO)
-        self.bool_all_train_plus_all_few = np.copy(self.bool_test_rest)
-        self.bool_all_train_plus_all_few[0:self.n_train] = True
+        # bool arrays
+        self.bool_fewshot = binarize(self.indices_fewshot)
+        self.bool_genuine_test = binarize(self.indices_genuine_test)
+        self.bool_train1_for_loo_evaluation = binarize(self.indices_train1_for_loo_evaluation)
+        self.bool_train2_for_loo_training = binarize(self.indices_train2_for_loo_training)
+
+        # final trainable set (for final testing)
+        self.bool_all_train_plus_all_few = np.logical_or(self.bool_train, self.bool_fewshot)
+
+
 
         # build index sets for leave one out (loo)
         self.looset = []
@@ -148,31 +150,28 @@ class FewshotClassifierTester():
                     ii for ii in np.arange(self.N) if not ii==i
                 ]
             )
-            index_few_1 = self.indices_few[loo["i"]]
-            indices_few_not_1 = self.indices_few[loo["not_i"]]
+            index_few_1 = self.indices_fewshot[loo["i"]]
+            indices_few_not_1 = self.indices_fewshot[loo["not_i"]]
             
             # for 1-class training set in this loo-validation
-            loo["_bool_train_1cls"] = np.copy(self.bool_train_rest)
+            loo["_bool_train_1cls"] = self.bool_train2_for_loo_training
 
             # for 2-class training set in this loo-validation
+            loo["_bool_train_2cls"] = np.logical_or(self.bool_train2_for_loo_training, binarize(indices_few_not_1))
 
-            tmp = np.copy(self.bool_train_rest)
-            tmp[indices_few_not_1] = True
-            loo["_bool_train_2cls"] = tmp
-
-            #evaluation set in this loo-validation
-            tmp = np.copy(self.bool_test_rest)
-            tmp[index_few_1] = True
-            loo["_bool_test"] = tmp
+            loo["_bool_valid"] = np.logical_or(self.bool_train1_for_loo_evaluation, binarize(index_few_1))
 
             self.looset.append(loo)
     
-    def do_validation(train_metafeatures, test_metafeatures, descriptor_base):
+    def do_validation(self, train_metafeatures, test_metafeatures, descriptor_base):
         # do validation with various zero-shot or few-shot classifiers
 
         # concatenate metafeatures and labels
         metafeatures = np.concatenate((train_metafeatures, test_metafeatures), axis=0)
         labels = self.labels
+
+        assert(metafeatures.shape[0] == labels.shape[0])
+        print(f"{metafeatures.shape[0]=}{labels.shape[0]=}") 
 
         ####
         # zero-shot (one-class) classifiers
@@ -183,13 +182,14 @@ class FewshotClassifierTester():
             f"{descriptor_base}_recon_loss",
             [ 
                 roc_auc_score(
-                    labels[loo["_bool_train_1cls"]], 
-                    metafeatures[loo["bool_train_1cls"], 0]
-                ) for loo in self.looset)
+                    labels[loo["_bool_valid"]], 
+                    metafeatures[loo["_bool_valid"], 0]
+                ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest],
-                metafeatures[self.bool_test_rest, 0]
+                labels[self.bool_genuine_test],
+                metafeatures[self.bool_genuine_test, 0]
+            )
         )
 
         # zero-shot (one-class) classifiers
@@ -197,13 +197,14 @@ class FewshotClassifierTester():
             f"{descriptor_base}_percetual_loss",
             [ 
                 roc_auc_score(
-                    labels[loo["_bool_train_1cls"]], 
-                    metafeatures[loo["bool_train_1cls"], 1]
-                ) for loo in self.looset)
+                    labels[loo["_bool_valid"]], 
+                    metafeatures[loo["_bool_valid"], 1]
+                ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest],
-                metafeatures[self.bool_test_rest, 1]
+                labels[self.bool_genuine_test],
+                metafeatures[self.bool_genuine_test, 1]
+            )
         )
 
         # zero-shot (one-class) classifiers
@@ -211,13 +212,14 @@ class FewshotClassifierTester():
             f"{descriptor_base}_range_compression_length",
             [ 
                 roc_auc_score(
-                    labels[loo["_bool_train_1cls"]], 
-                    metafeatures[loo["bool_train_1cls"], 2]
+                    labels[loo["_bool_valid"]], 
+                    metafeatures[loo["_bool_valid"], 2]
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest],
-                metafeatures[self.bool_test_rest, 2]
+                labels[self.bool_genuine_test],
+                metafeatures[self.bool_genuine_test, 2]
+            )
         )
 
 
@@ -228,21 +230,21 @@ class FewshotClassifierTester():
 
         mcd = MinCovDet()
 
-        mcd.fit(metafeatures[loo["bool_train_1cls"], :])
+        mcd.fit(metafeatures[self.bool_train2_for_loo_training, :])
 
         self.selector.add(
             f"{descriptor_base}_Maharanobis_dist",
             [ 
                 roc_auc_score(
-                    labels[loo["_bool_train_1cls"]], 
+                    labels[loo["_bool_valid"]], 
                     mcd.mahalanobis(
-                        metafeatures[loo["bool_train_1cls"], :]
+                        metafeatures[loo["_bool_valid"], :]
                     )
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest],
-                mcd.mahalanobis(metafeatures[self.bool_test_rest, :])
+                labels[self.bool_genuine_test],
+                mcd.mahalanobis(metafeatures[self.bool_genuine_test, :])
             )
         )
 
@@ -251,42 +253,42 @@ class FewshotClassifierTester():
             ocsvm = sklearn.svm.OneClassSVM(nu=nu)
             pipe = make_pipeline(StandardScaler(), ocsvm)
 
-            pipe.fit(metafeatures[loo["bool_train_1cls"], :])
+            pipe.fit(metafeatures[self.bool_train2_for_loo_training, :])
 
             self.selector.add(
                 f'{descriptor_base}_oneclass_svm_nu{nu}', 
                 [
                     roc_auc_score(
-                        labels[loo["_bool_train_1cls"]], 
+                        labels[loo["_bool_valid"]], 
                         -pipe.decision_function(
-                            metafeatures[loo["_bool_train_1cls"], :]
+                            metafeatures[loo["_bool_valid"], :]
                         )
                     ) for loo in self.looset
                 ],
                 roc_auc_score(
-                    labels[self.bool_test_rest], 
-                    mcd.mahalanobis(metafeatures[self.bool_test_rest, :])
+                    labels[self.bool_genuine_test], 
+                    -pipe.decision_function(metafeatures[self.bool_genuine_test, :])
                 )
             )
 
         # isolation forest
         isof = sklearn.ensemble.IsolationForest()
 
-        isof.fit(metafeatures[loo["bool_train_1cls"], :])
+        isof.fit(metafeatures[self.bool_train2_for_loo_training, :])
 
         self.selector.add(
             f'{descriptor_base}_isolation_forest', 
             [
                 roc_auc_score(
-                    metafeatures[loo["_bool_train_1cls"][loo["not_i"]], :], 
+                    labels[loo["_bool_valid"]], 
                     -isof.decision_function(
-                        metafeatures[loo["_bool_train_1cls"], :]
+                        metafeatures[loo["_bool_valid"], :]
                     )
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest], 
-                mcd.mahalanobis(metafeatures[self.bool_test_rest, :])
+                labels[self.bool_genuine_test], 
+                -isof.decision_function(metafeatures[self.bool_genuine_test, :])
             )
         )
 
@@ -298,7 +300,6 @@ class FewshotClassifierTester():
         # Mahalanobis ratio
 
         assert mcd is not None
-        scores = []
         
         mcd_anomaly = MinCovDet()
         
@@ -306,19 +307,18 @@ class FewshotClassifierTester():
             f'{descriptor_base}_Mahalanobis_ratio', 
             [
                 roc_auc_score(
-                    labels[loo["_bool_train_2cls"]], 
-                    mcd.
-                        mahalanobis(metafeatures[loo["_bool_train_2cls"], :]) /\
-                    mcd_anomaly.fit(metafeatures[self.indices_few[loo["not_i"]]], :]).
-                        mahalanobis(metafeatures[loo["_bool_train_2cls"], :])
-                    )
+                    labels[loo["_bool_valid"]], 
+                    mcd.\
+                        mahalanobis(metafeatures[loo["_bool_valid"], :]) /\
+                    mcd_anomaly.fit(metafeatures[self.indices_fewshot[loo["not_i"]], :]).
+                        mahalanobis(metafeatures[loo["_bool_valid"], :])
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest], 
-                mcd.mahalanobis(metafeatures[self.bool_test_rest, :]) / \
-                mcd_anomaly.fit(metafeatures[self.indices_few], :])     \
-                   .mahalanobis(metafeatures[self.bool_test_rest, :]) 
+                labels[self.bool_genuine_test], 
+                mcd.mahalanobis(metafeatures[self.bool_genuine_test, :]) / \
+                mcd_anomaly.fit(metafeatures[self.indices_fewshot, :])     \
+                   .mahalanobis(metafeatures[self.bool_genuine_test, :]) 
             )
         )
 
@@ -329,22 +329,22 @@ class FewshotClassifierTester():
             f'{descriptor_base}_SVM',
             [
                 roc_auc_score(
-                    labels[loo["_bool_test"]], 
+                    labels[loo["_bool_valid"]], 
                     pipe.fit(
                         metafeatures[loo["_bool_train_2cls"], :], 
-                        label[loo["_bool_train_2cls"], :]
+                        labels[loo["_bool_train_2cls"]]
                     ).decision_function(
-                        metafeatures[loo["_bool_test"], :]
+                        metafeatures[loo["_bool_valid"], :]
                     )
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest], 
+                labels[self.bool_genuine_test], 
                 pipe.fit(
                     metafeatures[self.bool_all_train_plus_all_few, :],
                     labels[self.bool_all_train_plus_all_few]
                 ).decision_function(
-                    metafeatures[self.bool_test_rest]
+                    metafeatures[self.bool_genuine_test]
                 )
             )
         )                    
@@ -358,22 +358,22 @@ class FewshotClassifierTester():
                 f'{descriptor_base}_svm_balanced_C={C:.5f}',
                 [
                     roc_auc_score(
-                        labels[loo["_bool_test"]], 
+                        labels[loo["_bool_valid"]], 
                         pipe.fit(
                             metafeatures[loo["_bool_train_2cls"], :], 
-                            label[loo["_bool_train_2cls"], :]
+                            labels[loo["_bool_train_2cls"]]
                         ).decision_function(
-                            metafeatures[loo["_bool_test"], :]
+                            metafeatures[loo["_bool_valid"], :]
                         )
                     ) for loo in self.looset
                 ],
                 roc_auc_score(
-                    labels[self.bool_test_rest], 
+                    labels[self.bool_genuine_test], 
                     pipe.fit(
                         metafeatures[self.bool_all_train_plus_all_few, :],
                         labels[self.bool_all_train_plus_all_few]
                     ).decision_function(
-                        metafeatures[self.bool_test_rest]
+                        metafeatures[self.bool_genuine_test]
                     )
                 )
             )                    
@@ -385,23 +385,23 @@ class FewshotClassifierTester():
             f'{descriptor_base}_RF',
             [
                 roc_auc_score(
-                    labels[loo["_bool_test"]], 
+                    labels[loo["_bool_valid"]], 
                     rf.fit(
                         metafeatures[loo["_bool_train_2cls"], :], 
-                        label[loo["_bool_train_2cls"], :]
+                        labels[loo["_bool_train_2cls"]]
                     ).predict_proba(
-                        metafeatures[loo["_bool_test"], :]
-                    )
+                        metafeatures[loo["_bool_valid"], :]
+                    )[:,1]
                 ) for loo in self.looset
             ],
             roc_auc_score(
-                labels[self.bool_test_rest], 
+                labels[self.bool_genuine_test], 
                 rf.fit(
                     metafeatures[self.bool_all_train_plus_all_few, :],
                     labels[self.bool_all_train_plus_all_few]
                 ).predict_proba(
-                    metafeatures[self.bool_test_rest]
-                )
+                    metafeatures[self.bool_genuine_test]
+                )[:,1]
             )
         )                    
 
@@ -411,4 +411,17 @@ class FewshotClassifierTester():
 
         print(res)
 
-        return res["best_avg_rank"], res["peeked_current_real_best_test_score"], res["best_model_descriptor"]
+        return res["best_avg_rank"], res["peeked_current_real_best_test_score"], res["best_model_descriptor"], res["test_score_with_the_best"]
+
+
+
+
+
+if __name__=="__main__":
+    fsct = FewshotClassifierTester(10, np.array([0,]*1000), np.array([0,]*160+[1,]*160), 42)
+
+    drift = np.random.randn(1,3)
+
+    for i in range(10):
+        fsct.do_validation(np.random.randn(1000,3), np.concatenate((np.random.randn(160,3), np.random.randn(160,3)+drift), axis=0), f"{i=}")
+

@@ -76,6 +76,9 @@ class AEU_QBWorker(AEUWorker):
         self.method_best_fewshot = 0
         self.epoch_best_fewshot = 0
 
+        # fewshot validation system
+        self.fsct = None
+
     def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0, epoch=0):
         self.net.train()
         losses = AverageMeter()
@@ -151,6 +154,8 @@ class AEU_QBWorker(AEUWorker):
     def evaluate(self, epoch='test'):
         self.net.eval()
         self.close_network_grad()
+
+
 
         # calculate training_firing_rates from training dataset
 
@@ -449,16 +454,13 @@ class AEU_QBWorker(AEUWorker):
         np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
         np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
         
-        auc_fewshot_validation, auc_fewshot_test, method_best_fewshot = utils.fewshot_classifiers.seek_best_classifier(train_metafeatures, test_metafeatures, test_labels)
+        # drive FewshotClassifierTester
+        if self.fsct is None:
+            self.fsct = utils.fewshot_classifiers.FewshotClassifierTester(10, np.zeros(train_metafeatures.shape[0]), test_labels, 42)
 
-        if self.auc_fewshot_validation < auc_fewshot_validation:
-            # improved; update
-            self.auc_fewshot_validation = auc_fewshot_validation
-            self.auc_fewshot_test = auc_fewshot_test
-            self.method_best_fewshot = method_best_fewshot
-            self.epoch_best_fewshot = epoch
+        best_avg_rank, peeked_best_score, best_model_desc, test_score_with_the_best = self.fsct.do_validation(train_metafeatures, test_metafeatures, f"{epoch=}_")
 
-        results.update({'auc_fewshot': self.auc_fewshot_test, 'method_best_fewshot': self.method_best_fewshot, 'epoch_best_fewshot': self.epoch_best_fewshot, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+        results.update({'best_avg_rank': best_avg_rank, 'auc_best_fewshot':test_score_with_the_best, 'auc_best_peeked': peeked_best_score, 'best_model_desc': best_model_desc, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
 
 
 
@@ -498,6 +500,7 @@ class AEU_QBWorker(AEUWorker):
         num_epochs = self.opt.train['epochs']
         print("=> Initial learning rate: {:g}".format(self.opt.train['lr']))
         t0 = time.time()
+
         for epoch in range(1, num_epochs + 1):
 
             firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
@@ -533,7 +536,10 @@ class AEU_QBWorker(AEUWorker):
 
                 keys = list(eval_results.keys())
                 for key in keys:
-                    print(key+": {:.5f}".format(eval_results[key]), end="  ")
+                    if(isinstance(eval_results[key], str)):
+                        print(key+" : "+eval_results[key], end="  ")
+                    else:
+                        print(key+": {:.5f}".format(eval_results[key]), end="  ")
                     eval_results["val/"+key] = eval_results.pop(key)
                 print()
 
