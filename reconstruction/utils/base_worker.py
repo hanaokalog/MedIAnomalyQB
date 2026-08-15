@@ -155,11 +155,15 @@ class BaseWorker:
                 n_classes=self.opt.model['in_c'],
                 image_size=self.opt.model['input_size'],
                 epsilon=self.opt.model['epsilon'],
-                using_heaviside=self.opt.model['heaviside']
+                using_heaviside=self.opt.model['heaviside'],
+                wf=self.opt.model['wf'],
+                num_top_latent=self.opt.model['latent_size_with_noise']
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
-                perceptual_loss_weight=self.opt.model['perceptual_loss_weight']
+                perceptual_loss_weight=self.opt.model['perceptual_loss_weight'],
+                use_log_var=not self.opt.model['not_use_log_var'],
+                use_KL_divergence=self.opt.model['use_KL_divergence']
             )
         else:
             raise NotImplementedError("Unexpected model name: {}".format(self.opt.model['name']))
@@ -255,11 +259,15 @@ class BaseWorker:
                        "epsilon": self.opt.model['epsilon'],
                        "firing_rate_cost_weight": self.opt.model['firing_rate_cost_weight'],
                        "perceptual_loss_weight": self.opt.model['perceptual_loss_weight'],
+                       "using_identity_connection": self.opt.model['using_identity_connection'],
+                       "wf": self.opt.model['wf'],
+                       "latent_size_with_noise": self.opt.model['latent_size_with_noise'],
 
                        "epochs": self.opt.train["epochs"],
                        "batch_size": self.opt.train["batch_size"],
                        "lr": self.opt.train["lr"],
                        "weight_decay": self.opt.train["weight_decay"],
+                       "noise_level": self.opt.train["noise_level"],
                        "seed": self.seed,
 
                        "num_params": params,

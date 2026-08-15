@@ -4,25 +4,82 @@ import os
 from sklearn import metrics
 from utils.util import compute_best_dice
 import numpy as np
+import scipy.ndimage
 
 import gzip
 
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from sklearn.svm import OneClassSVM
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 
 from utils.ae_worker import AEWorker
 from utils.aeu_worker import AEUWorker
 from utils.util import AverageMeter
 
+import utils.compressor
+import utils.fewshot_classifiers
+
 import wandb
+
+
+
+def make_noise_like(x, sigma = 1.0):
+    
+    shape = x.size()
+    
+    assert(shape[3] == shape[2])
+    sz = shape[2]
+    d = shape[1]
+    num = shape[0]
+
+    res = np.zeros((num, d, sz, sz))
+
+    for i in range(num):
+
+        mother_std = x[i,:,:,:].std().detach().cpu().numpy()
+
+        z1 = np.random.randn(sz,sz,d)
+        z2 = np.random.randn(sz,sz,1)
+
+        rad1 = np.random.rand()*16+1
+        rad2 = np.random.rand()*16+1
+
+        for dd in range(d):
+            z1[:,:,dd] = scipy.ndimage.gaussian_filter(z1[:,:,dd], rad1) 
+        z2 = scipy.ndimage.gaussian_filter(z2, rad2)
+
+        z1 /= z1.std()
+        z2 /= z2.std()
+
+        z2 = np.repeat(z2, d, axis=2)
+        z2 -= np.random.rand()*2
+        z2 = np.where(z2>0, z2, 0)
+        z2 = z2 ** (np.random.rand()*2.0+0.01)
+
+        z = z1 * z2
+
+        res[i,:,:,:] = z.transpose((2,0,1)) * mother_std * sigma
+
+    return torch.from_numpy(res.astype(np.float32)).clone()
+
+
 
 class AEU_QBWorker(AEUWorker):
     def __init__(self, opt):
         super(AEU_QBWorker, self).__init__(opt)
         self.pixel_metric = True if self.opt.dataset == "brats" else False
         self.firing_rate_cost_weight = self.opt.model['firing_rate_cost_weight']
+        self.auc_fewshot_validation = 0
+        self.auc_fewshot_test = 0
+        self.method_best_fewshot = 0
+        self.epoch_best_fewshot = 0
 
-    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0):
+        # fewshot validation system
+        self.fsct = None
+
+    def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0, epoch=0):
         self.net.train()
         losses = AverageMeter()
         losses_recon = AverageMeter()
@@ -34,9 +91,40 @@ class AEU_QBWorker(AEUWorker):
         
         for idx_batch, data_batch in enumerate(self.train_loader):
             img = data_batch['img']
+            img_noised = img.clone()
+
             img = img.cuda()
 
-            net_out = self.net(img, shortcut_multiplier=shortcut_multiplier)
+            if 0 < noise_level:
+                img_noised += make_noise_like(img, noise_level)
+                img_noised = img_noised.cuda()
+            else:
+                img_noised = img.cuda()
+
+            net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
+
+            if idx_batch == 0 and epoch%5==1:
+                if self.logger is not None:
+                    if(img.shape[1] == 1):
+                        img_noised1 = img_noised[0,0,:,:]
+                        img_denoised1 = net_out["x_hat"][0,0,:,:]
+                        img_logvar1 = net_out["log_var"][0,0,:,:]
+                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.T[:,:,np.newaxis], caption=f'noised_Ep{epoch}', mode="L")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.T[:,:,np.newaxis], caption=f'denoised_Ep{epoch}', mode="L")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.T[:,:,np.newaxis], caption=f'logvar_Ep{epoch}', mode="L")})
+                    else:
+                        img_noised1 = img_noised[0,:,:,:]
+                        img_denoised1 = net_out["x_hat"][0,:,:,:]
+                        img_logvar1 = net_out["log_var"][0,:,:,:]
+                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.permute((0,1,2)), caption=f'noised_Ep{epoch}', mode="RGB")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.permute((0,1,2)), caption=f'denoised_Ep{epoch}', mode="RGB")})
+                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.permute((0,1,2)), caption=f'logvar_Ep{epoch}', mode="RGB")})
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
@@ -67,6 +155,81 @@ class AEU_QBWorker(AEUWorker):
         self.net.eval()
         self.close_network_grad()
 
+
+
+        # calculate training_firing_rates from training dataset
+
+        # pass 1
+        firing_count = None
+        count = 0
+        losses = []
+        losses_recon = []
+        losses_perceptual = []
+        for idx_batch, data_batch in enumerate(self.train_loader):
+            # binary latent
+            self.net.using_heaviside = True
+            self.net.adding_noise_in_test = False
+
+            img = data_batch['img']
+            img = img.cuda()
+
+            net_out = self.net(img)
+
+            # count firings
+            firing = net_out["z"]
+            firing_partial_count = torch.sum(firing, dim=0, keepdim=True)
+            if firing_count is None:
+                firing_count = torch.zeros_like(firing_partial_count)
+            firing_count += firing_partial_count
+
+            loss_etc = self.criterion(img, net_out, all_scores=True, force_firing=False, firing_cost_multiplier=1.0)
+            losses_recon.append(loss_etc['recon_losses'])
+            losses_perceptual.append(loss_etc['perceptual_losses'])
+
+            count += 1
+
+        training_firing_rates = (firing_count / count).flatten()
+
+        # pass 2
+        encoded_lengths = []
+        for idx_batch, data_batch in enumerate(self.train_loader):
+            # binary latent
+            self.net.using_heaviside = True
+            self.net.adding_noise_in_test = False
+
+            img = data_batch['img']
+            img = img.cuda()
+
+            net_out = self.net(img)
+
+            firing = net_out["z"]
+
+            # calculate lengths
+            for i in range(firing.shape[0]):
+                encoded = utils.compressor.encode(
+                    firing[i, :].cpu().detach().numpy(), 
+                    training_firing_rates.cpu().detach().numpy()
+                )
+                encoded_lengths.append(len(encoded))
+
+        # make list
+        train_losses_recon = torch.cat(losses_recon, dim=0).cpu().detach().numpy()
+        train_losses_perceptual = torch.cat(losses_perceptual, dim=0).cpu().detach().numpy()
+        train_encoded_lengths = np.array(encoded_lengths)
+
+
+
+        # build an one-class SVM
+        train_metafeatures = np.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths), axis=1)
+
+        oneclassmodel = make_pipeline(StandardScaler(), OneClassSVM())
+
+        oneclassmodel.fit(train_metafeatures)
+
+
+
+        # test
+
         test_imgs, test_imgs_hat, test_scores, test_score_maps, test_names, test_labels, test_masks = \
             [], [], [], [], [], [], []
         test_firing_rates = []
@@ -76,7 +239,11 @@ class AEU_QBWorker(AEUWorker):
         test_firing_rates = []
         test_real_firing_rates = []
         test_imgs_hat_for_compression = []
+        test_imgs_diff_for_compression = []
         test_imgs_hat_for_LDP = []
+
+        test_l2_score_maps = []
+        test_l2_scores = []
         
         test_repts = []
         test_repts_binary = []
@@ -102,6 +269,8 @@ class AEU_QBWorker(AEUWorker):
             lossset = self.criterion(img, net_out, all_scores=True, force_firing=False)
             anomaly_score_map = lossset['anomaly_score_maps'].cpu().detach()  # Nx1xHxW
             test_score_maps.append(anomaly_score_map)
+            l2_anomaly_score_map = lossset['l2_anomaly_score_maps'].cpu().detach()  # Nx1xHxW
+            test_l2_score_maps.append(l2_anomaly_score_map)
 
             test_recon_losses += lossset["recon_losses"].cpu().detach().numpy().tolist()
             test_perceptual_losses += lossset["perceptual_losses"].cpu().detach().numpy().tolist()
@@ -128,7 +297,10 @@ class AEU_QBWorker(AEUWorker):
                 net_out_for_compression = self.net(img)
 
                 test_imgs_hat_for_compression.append(net_out_for_compression['x_hat'].cpu())
+                test_imgs_diff_for_compression.append(net_out_for_compression['x_hat'].cpu() - img.cpu())
                 test_repts_binary.append(net_out_for_compression['z'].cpu().detach().numpy())
+                
+                
                 
                 # outputs for local differential privacy output
                 self.net.using_heaviside = False
@@ -146,6 +318,9 @@ class AEU_QBWorker(AEUWorker):
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
         test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
 
+        test_l2_score_maps = torch.cat(test_l2_score_maps, dim=0)  # Nx1xHxW
+        test_l2_scores = torch.mean(test_l2_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
+
         test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight
         test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight
 
@@ -160,8 +335,10 @@ class AEU_QBWorker(AEUWorker):
         ap_firing = metrics.average_precision_score(test_labels, test_scores_firing)
         ap_real_firing = metrics.average_precision_score(test_labels, test_scores_real_firing)
         ap_image_derived = metrics.average_precision_score(test_labels, test_image_derived_losses)
+        ap_l2 = metrics.average_precision_score(test_labels, test_l2_scores)
         auc_firing = metrics.roc_auc_score(test_labels, test_scores_firing)
         auc_image_derived = metrics.roc_auc_score(test_labels, test_image_derived_losses)
+        auc_l2 = metrics.roc_auc_score(test_labels, test_l2_scores)
         auc_real_firing = metrics.roc_auc_score(test_labels, test_scores_real_firing)
         auc_perceptual = metrics.roc_auc_score(test_labels, test_perceptual_losses)
         auc_recon = metrics.roc_auc_score(test_labels, test_recon_losses)
@@ -174,7 +351,9 @@ class AEU_QBWorker(AEUWorker):
                     'AUC_image_derived': auc_image_derived,
                     'AP_image_derived': ap_image_derived,
                     'AUC_perceptual': auc_perceptual,
-                    'AUC_recon': auc_recon
+                    'AUC_recon': auc_recon,
+                    'AP_l2': ap_l2,
+                    'AUC_l2': auc_l2
         }
         # pixel-level metrics
         if self.pixel_metric:
@@ -185,6 +364,13 @@ class AEU_QBWorker(AEUWorker):
                                             test_score_maps.cpu().numpy().reshape(-1))
             best_dice, best_thresh = compute_best_dice(test_score_maps.cpu().numpy(), test_masks.numpy())
             results.update({'PixAUC': pix_auc, 'PixAP': pix_ap, 'BestDice': best_dice, 'BestThresh': best_thresh})
+            # l2-only (w/o log_var, firing rate)
+            pix_ap_l2 = metrics.average_precision_score(test_masks.numpy().reshape(-1),
+                                                     test_l2_score_maps.cpu().numpy().reshape(-1))
+            pix_auc_l2 = metrics.roc_auc_score(test_masks.numpy().reshape(-1),
+                                            test_l2_score_maps.cpu().numpy().reshape(-1))
+            best_dice_l2, best_thresh_l2 = compute_best_dice(test_l2_score_maps.cpu().numpy(), test_masks.numpy())
+            results.update({'PixAUC_l2': pix_auc_l2, 'PixAP_l2': pix_ap_l2, 'BestDice_l2': best_dice_l2, 'BestThresh_l2': best_thresh_l2})
         else:
             test_masks = None
 
@@ -196,13 +382,13 @@ class AEU_QBWorker(AEUWorker):
         # latent representaions
         test_repts = np.concatenate(test_repts, axis=0)  # Nxd
         plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
-        if self.logger is not None:
-            repts_img = np.stack((
-                np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
-                np.clip(test_repts[:,:]*2-0.5, 0., 1.), 
-                np.clip(test_repts[:,:]*2-0.0, 0., 1.)
-            ), axis=2)
-            self.logger.log(step=epoch, data={f'repts/Ep{epoch}': wandb.Image(repts_img, caption=f'repts_Ep{epoch}', mode='RGB')})
+        #if self.logger is not None:
+        #    repts_img = np.stack((
+        #        np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
+        #        np.clip(test_repts[:,:]*2-0.5, 0., 1.), 
+        #        np.clip(test_repts[:,:]*2-0.0, 0., 1.)
+        #    ), axis=2)
+        #    self.logger.log(step=epoch, data={f'repts/Ep{epoch}': wandb.Image(repts_img, caption=f'repts_Ep{epoch}', mode='RGB')})
 
         # reconstruction results
         test_imgs_first = torch.cat(test_imgs, dim=0)[0:4,:,:,:]
@@ -213,6 +399,20 @@ class AEU_QBWorker(AEUWorker):
         test_imgs_last_hat = torch.cat(test_imgs_hat, dim=0)[-5:-1,:,:,:]
         test_imgs_hat_ = torch.cat((test_imgs_first_hat, test_imgs_last_hat), dim=0)
 
+        if self.pixel_metric:
+            test_imgs_first_abnormal_score_map = test_score_maps[0:4,:,:,:]
+            test_imgs_last_abnormal_score_map = test_score_maps[-5:-1,:,:,:]
+            test_imgs_abnormal_score_map_ = torch.cat((test_imgs_first_abnormal_score_map, test_imgs_last_abnormal_score_map), dim=0)
+
+            test_imgs_first_mask = test_masks[0:4,:,:,:]
+            test_imgs_last_mask = test_masks[-5:-1,:,:,:]
+            test_imgs_mask_ = torch.cat((test_imgs_first_mask, test_imgs_last_mask), dim=0)
+
+            if test_imgs_.shape[1] == 3:
+                # color
+                test_imgs_abnormal_score_map_ = test_imgs_abnormal_score_map_.repeat(1,3,1,1,1)
+                test_imgs_mask_ = test_imgs_mask_.repeat(1,3,1,1,1)
+
         if 1:
             test_imgs_first_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[0:4,:,:,:]
             test_imgs_last_hat_for_compression =  torch.cat(test_imgs_hat_for_compression, dim=0)[-5:-1,:,:,:]
@@ -222,10 +422,10 @@ class AEU_QBWorker(AEUWorker):
             test_imgs_last_hat_for_LDP =  torch.cat(test_imgs_hat_for_LDP, dim=0)[-5:-1,:,:,:]
             test_imgs_hat_for_LDP_ = torch.cat((test_imgs_first_hat_for_LDP, test_imgs_last_hat_for_LDP), dim=0)
 
-        if 1:
-            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
+        if self.pixel_metric:
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_abnormal_score_map_, test_imgs_mask_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
         else:
-            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_), dim=4)
+            img = torch.stack((test_imgs_, test_imgs_hat_, test_imgs_-test_imgs_hat_, test_imgs_hat_for_compression_, test_imgs_hat_for_LDP_), dim=4)
         img = torch.permute(img, (4,2,0,3,1))
         img = img.reshape((img.shape[0]*img.shape[1], img.shape[2]*img.shape[3], img.shape[4]))
         if(img.shape[2] == 1):
@@ -239,26 +439,54 @@ class AEU_QBWorker(AEUWorker):
                 assert(img.shape[2] == 3)
                 self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
-        if 1:
-            test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
-            test_repts_binary_ = np.concatenate((test_repts_binary[0:4], test_repts_binary[-5:-1]), axis=0)
-            # latent expression compression rate
-            original_image_bytes = len(test_imgs_.flatten())
-            original_repts_binary = test_repts_binary_.astype(bool).flatten().tobytes()
-            compressed_repts_binary = gzip.compress(original_repts_binary)
-            compressed_image_bytes = len(compressed_repts_binary)
-            ratio = compressed_image_bytes/original_image_bytes
-            print(f'compression/Ep{epoch} = {ratio} = {compressed_image_bytes} / {original_image_bytes}')
-            if self.logger is not None:
-                self.logger.log(step=epoch, data={f'gzip/original_size': original_image_bytes})
-                self.logger.log(step=epoch, data={f'gzip/compressed_size': compressed_image_bytes})
-                self.logger.log(step=epoch, data={f'gzip/compression_ratio': ratio})
+        test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
             
-        # rept vsne
+        # latent expression compression with arithmetic coding
+        encoded_length = []
+        for i in range(test_repts_binary.shape[0]):
+            encoded = utils.compressor.encode(test_repts_binary[i, :], training_firing_rates.cpu().detach().numpy())
+            encoded_length.append(len(encoded))
+        
+        encoded_length = np.array(encoded_length)
+        
+        auc_encoded_length = metrics.roc_auc_score(test_labels, encoded_length)
+        ap_encoded_length = metrics.average_precision_score(test_labels, encoded_length)
+
+        # ... and png compression of residual information (diff)
+        diffs = torch.cat(test_imgs_diff_for_compression, dim=0).detach().cpu().numpy() # NxCxHxW
+        encoded_diff_length = []
+        for i in range(diffs.shape[0]):
+            encoded_diff_length.append(utils.compressor.encoded_length_residual((((np.clip(np.squeeze(np.transpose((diffs[i,:,:,:]-.5)*2.0, (1,2,0))), -3.0, 3.0))+3.0)/6.0*255).astype('uint8'))) # each original image was normalized as (mean, std)=(.5, .5).  Here we convert it from the window (-3sigma, +3sigma) to (0, 255)
+        encoded_diff_length = np.array(encoded_diff_length)
+
+        total_encoded_length = encoded_length + encoded_diff_length
+
+        auc_total_encoded_length = metrics.roc_auc_score(test_labels, total_encoded_length)
+        ap_total_encoded_length = metrics.average_precision_score(test_labels, total_encoded_length)
+
+        # seek the best model
+        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, total_encoded_length), axis=1)
+
+        np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
+        np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
+        
+        # drive FewshotClassifierTester
+        if self.fsct is None:
+            self.fsct = utils.fewshot_classifiers.FewshotClassifierTester(10, np.zeros(train_metafeatures.shape[0]), test_labels, 42)
+
+        best_avg_rank, peeked_best_score, best_model_desc, test_score_with_the_best = self.fsct.do_validation(train_metafeatures, test_metafeatures, f"{epoch=}_")
+
+        results.update({'best_avg_rank': best_avg_rank, 'auc_best_fewshot':test_score_with_the_best, 'auc_best_peeked': peeked_best_score, 'best_model_desc': best_model_desc, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+        results.update({'auc_total_encoded_length': auc_total_encoded_length, 'ap_total_encoded_length': ap_total_encoded_length})
+
+        results.update({'average_range_encoded_length': np.mean(encoded_length)})
+        results.update({'average_png_encoded_length': np.mean(encoded_diff_length)})
+        
+
+        # rept tsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2
         normal_tsne = test_tsne[np.where(test_labels == 0)]
         abnormal_tsne = test_tsne[np.where(test_labels == 1)]
-        plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams.update({'font.size': 14})
         plt.scatter(normal_tsne[:, 0], normal_tsne[:, 1], color='b', label="Normal", s=2)
         plt.scatter(abnormal_tsne[:, 0], abnormal_tsne[:, 1], color='r', label="Abnormal", s=2)
@@ -282,6 +510,7 @@ class AEU_QBWorker(AEUWorker):
             np.save(os.path.join(self.opt.train['save_dir'], 'test_scores_real_firing.npy'), test_scores_real_firing)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_perceptual_losses.npy'), test_perceptual_losses)
             np.save(os.path.join(self.opt.train['save_dir'], 'test_recon_losses.npy'), test_recon_losses)
+            np.save(os.path.join(self.opt.train['save_dir'], 'encoded_length.npy'), encoded_length)
 
         self.enable_network_grad()
         return results
@@ -290,13 +519,14 @@ class AEU_QBWorker(AEUWorker):
         num_epochs = self.opt.train['epochs']
         print("=> Initial learning rate: {:g}".format(self.opt.train['lr']))
         t0 = time.time()
+
         for epoch in range(1, num_epochs + 1):
 
             firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
-            shortcut_multiplier = 0.0 if epoch<100.0 else 1.0
+            shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
 
             train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
-                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier)
+                self.train_epoch(force_firing=True, firing_cost_multiplier=firing_cost_multiplier, shortcut_multiplier=shortcut_multiplier, noise_level = self.opt.train['noise_level'], epoch=epoch)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
 #                self.train_epoch(force_firing=True)
 #            train_loss, loss_recon, loss_logvar, loss_firing, loss_perceptual, firing_rate, real_firing_rate = \
@@ -325,7 +555,10 @@ class AEU_QBWorker(AEUWorker):
 
                 keys = list(eval_results.keys())
                 for key in keys:
-                    print(key+": {:.5f}".format(eval_results[key]), end="  ")
+                    if(isinstance(eval_results[key], str)):
+                        print(key+" : "+eval_results[key], end="  ")
+                    else:
+                        print(key+": {:.5f}".format(eval_results[key]), end="  ")
                     eval_results["val/"+key] = eval_results.pop(key)
                 print()
 

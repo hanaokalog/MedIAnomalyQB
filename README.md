@@ -1,3 +1,10 @@
+
+a modified version (modified by Shouhei HANAOKA)
+
+of
+
+
+
 # MedIAnomaly: A comparative study of anomaly detection in medical images
 
 This is the repository for our benchmark paper [MedIAnomaly: A comparative study of anomaly detection in medical images](https://arxiv.org/abs/2404.04518).
