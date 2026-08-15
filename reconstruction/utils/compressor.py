@@ -11,6 +11,8 @@ the ideal -log2 p(x).
 """
 import numpy as np
 import constriction
+from PIL import Image
+import io
 
 
 def encode(x: np.ndarray, p: np.ndarray) -> np.ndarray:
@@ -29,6 +31,18 @@ def decode(compressed: np.ndarray, p: np.ndarray) -> np.ndarray:
     model = constriction.stream.model.Bernoulli(perfect=False)
     dec = constriction.stream.queue.RangeDecoder(compressed)
     return dec.decode(model, p)                   # decode len(p) elements
+
+
+def encoded_length_residual(x: np.ndarray) -> int:
+    if len(x.shape)==2:
+        mode = 'L'
+    else:
+        mode = 'RGB'
+    with Image.fromarray(x, mode) as img:
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='PNG')
+        return img_bytes.tell()
+
 
 
 if __name__ == "__main__":

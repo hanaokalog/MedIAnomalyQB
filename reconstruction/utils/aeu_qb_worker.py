@@ -239,6 +239,7 @@ class AEU_QBWorker(AEUWorker):
         test_firing_rates = []
         test_real_firing_rates = []
         test_imgs_hat_for_compression = []
+        test_imgs_diff_for_compression = []
         test_imgs_hat_for_LDP = []
 
         test_l2_score_maps = []
@@ -296,7 +297,10 @@ class AEU_QBWorker(AEUWorker):
                 net_out_for_compression = self.net(img)
 
                 test_imgs_hat_for_compression.append(net_out_for_compression['x_hat'].cpu())
+                test_imgs_diff_for_compression.append(net_out_for_compression['x_hat'].cpu() - img.cpu())
                 test_repts_binary.append(net_out_for_compression['z'].cpu().detach().numpy())
+                
+                
                 
                 # outputs for local differential privacy output
                 self.net.using_heaviside = False
@@ -448,8 +452,20 @@ class AEU_QBWorker(AEUWorker):
         auc_encoded_length = metrics.roc_auc_score(test_labels, encoded_length)
         ap_encoded_length = metrics.average_precision_score(test_labels, encoded_length)
 
+        # ... and png compression of residual information (diff)
+        diffs = torch.cat(test_imgs_diff_for_compression, dim=0).detach().cpu().numpy() # NxCxHxW
+        encoded_diff_length = []
+        for i in range(diffs.shape[0]):
+            encoded_diff_length.append(utils.compressor.encoded_length_residual((((np.clip(np.squeeze(np.transpose((diffs[i,:,:,:]-.5)*2.0, (1,2,0))), -3.0, 3.0))+3.0)/6.0*255).astype('uint8'))) # each original image was normalized as (mean, std)=(.5, .5).  Here we convert it from the window (-3sigma, +3sigma) to (0, 255)
+        encoded_diff_length = np.array(encoded_diff_length)
+
+        total_encoded_length = encoded_length + encoded_diff_length
+
+        auc_total_encoded_length = metrics.roc_auc_score(test_labels, total_encoded_length)
+        ap_total_encoded_length = metrics.average_precision_score(test_labels, total_encoded_length)
+
         # seek the best model
-        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, encoded_length), axis=1)
+        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, total_encoded_length), axis=1)
 
         np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
         np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
@@ -461,8 +477,11 @@ class AEU_QBWorker(AEUWorker):
         best_avg_rank, peeked_best_score, best_model_desc, test_score_with_the_best = self.fsct.do_validation(train_metafeatures, test_metafeatures, f"{epoch=}_")
 
         results.update({'best_avg_rank': best_avg_rank, 'auc_best_fewshot':test_score_with_the_best, 'auc_best_peeked': peeked_best_score, 'best_model_desc': best_model_desc, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
+        results.update({'auc_total_encoded_length': auc_total_encoded_length, 'ap_total_encoded_length': ap_total_encoded_length})
 
-
+        results.update({'average_range_encoded_length': np.mean(encoded_length)})
+        results.update({'average_png_encoded_length': np.mean(encoded_diff_length)})
+        
 
         # rept tsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2

@@ -549,12 +549,13 @@ class RelativePerceptualL1Loss(PerceptualLoss):
 
 
 class AEU_Perceptual_QBLoss(AEU_QBLoss):
-    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1, use_log_var=True):
+    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1, use_log_var=True, use_KL_divergence=True):
         super(AEU_Perceptual_QBLoss, self).__init__(firing_rate_cost_weight)
         self.firing_rate_cost_weight = firing_rate_cost_weight
         self.perceptual_loss_weight = perceptual_loss_weight
         self.perceptual_loss = RelativePerceptualL1Loss()
         self.use_log_var = use_log_var
+        self.use_KL_divergence = use_KL_divergence
 
     def forward(self, net_in, net_out, anomaly_score=False, keepdim=False, all_scores=False, force_firing=False, firing_cost_multiplier=None, pure_l2_anomaly_score=False):
         x_hat, log_var = net_out['x_hat'], net_out['log_var']
@@ -580,51 +581,59 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
         if firing_cost_multiplier is not None:
             firing_rate_cost_weight *= firing_cost_multiplier
 
-        firing_loss = firing_rate * firing_rate_cost_weight
+        if not self.use_KL_divergence: # not KL divergence loss
 
-        if 0: # force_firing:
-            num_neuron = net_out['z'].shape[1]
-            firing_rate_target = torch.linspace(0.5, 0.5, num_neuron, device=net_out['z'].device).view(1, num_neuron)
-            firing_loss2 = ((net_out['z'].mean(dim=[0], keepdim=True)-firing_rate_target)**2)  # Use the mean firing rate across the batch
-            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0 * self.firing_rate_cost_weight
-            firing_loss += firing_loss2
-        if 0: # force_firing:
-            num_neuron = net_out['unnoised_z'].shape[1]
-            firing_rate_target = torch.linspace(0.5, 0.5, num_neuron, device=net_out['unnoised_z'].device).view(1, num_neuron)
-            firing_loss2 = ((net_out['unnoised_z'].mean(dim=[0], keepdim=True)-firing_rate_target)**2)  # Use the mean firing rate across the batch
-            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0 * self.firing_rate_cost_weight
-            firing_loss += firing_loss2
+            firing_loss = firing_rate * firing_rate_cost_weight
 
-        if 0: # force_firing:
-#            firing_rate_target = 0.25
-#            firing_loss2 = torch.abs(firing_rate_target - net_out['z'].mean(dim=[0], keepdim=True))**2  # Use the mean firing rate across the batch
-            firing_loss2 = 0.0
-            firing_loss2 += torch.clamp(0.5 - torch.max(net_out['unnoised_z'], dim=0, keepdim=True)[0], 0, 1)  # Use the max firing across the batch
-            firing_loss2 += torch.clamp(torch.min(net_out['unnoised_z'], dim=0, keepdim=True)[0] - 0.5, 0, 1)  # Use the min firing across the batch
-            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0
-            firing_loss += firing_loss2
+            if 0: # force_firing:
+                num_neuron = net_out['z'].shape[1]
+                firing_rate_target = torch.linspace(0.5, 0.5, num_neuron, device=net_out['z'].device).view(1, num_neuron)
+                firing_loss2 = ((net_out['z'].mean(dim=[0], keepdim=True)-firing_rate_target)**2)  # Use the mean firing rate across the batch
+                firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+                firing_loss2 = firing_loss2 * 1000.0 * self.firing_rate_cost_weight
+                firing_loss += firing_loss2
+            if 0: # force_firing:
+                num_neuron = net_out['unnoised_z'].shape[1]
+                firing_rate_target = torch.linspace(0.5, 0.5, num_neuron, device=net_out['unnoised_z'].device).view(1, num_neuron)
+                firing_loss2 = ((net_out['unnoised_z'].mean(dim=[0], keepdim=True)-firing_rate_target)**2)  # Use the mean firing rate across the batch
+                firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+                firing_loss2 = firing_loss2 * 1000.0 * self.firing_rate_cost_weight
+                firing_loss += firing_loss2
 
-        if 0: # force_firing:
-            firing_rate_target = 0.1
-            firing_loss2 = 0.0
-            firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
-            firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
-            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0
-            firing_loss += firing_loss2
+            if 0: # force_firing:
+        #            firing_rate_target = 0.25
+        #            firing_loss2 = torch.abs(firing_rate_target - net_out['z'].mean(dim=[0], keepdim=True))**2  # Use the mean firing rate across the batch
+                firing_loss2 = 0.0
+                firing_loss2 += torch.clamp(0.5 - torch.max(net_out['unnoised_z'], dim=0, keepdim=True)[0], 0, 1)  # Use the max firing across the batch
+                firing_loss2 += torch.clamp(torch.min(net_out['unnoised_z'], dim=0, keepdim=True)[0] - 0.5, 0, 1)  # Use the min firing across the batch
+                firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+                firing_loss2 = firing_loss2 * 1000.0
+                firing_loss += firing_loss2
 
-        if 0: # force_firing:
-            firing_rate_target = 0.1
-            firing_loss2 = 0.0
-            firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
-            firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
-            firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
-            firing_loss2 = firing_loss2 * 1000.0
-            firing_loss += firing_loss2
-            
+            if 0: # force_firing:
+                firing_rate_target = 0.1
+                firing_loss2 = 0.0
+                firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
+                firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
+                firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+                firing_loss2 = firing_loss2 * 1000.0
+                firing_loss += firing_loss2
+
+            if 0: # force_firing:
+                firing_rate_target = 0.1
+                firing_loss2 = 0.0
+                firing_loss2 += torch.clamp(0.5 - torch.quantile(net_out['unnoised_z'], 1-firing_rate_target, dim=0, keepdim=True), 0, 1)  # Use the 0.9-quantile firing across the batch
+                firing_loss2 += torch.clamp(torch.quantile(net_out['unnoised_z'], firing_rate_target, dim=0, keepdim=True) - 0.5, 0, 1)    # Use the 0.1-quantile firing across the batch
+                firing_loss2 = firing_loss2.mean(dim=[1], keepdim=True)  # Average across neurons
+                firing_loss2 = firing_loss2 * 1000.0
+                firing_loss += firing_loss2
+                
+        else: # KL divergence loss from sparse autoencoder
+            rho_hat = torch.mean(net_out['unnoised_z'], dim=1) # average across neurons
+            rho = 1/64 # hard-coted, supposing minibatch size = 64
+            rho = torch.tensor([rho] * len(rho_hat)).to(rho_hat.device)
+            kl_d_loss = torch.sum(rho * torch.log(rho/rho_hat) + (1 - rho) * torch.log((1-rho) / (1-rho_hat)))
+            firing_loss = kl_d_loss * self.firing_rate_cost_weight
 
         loss += firing_loss #.expand_as(loss)
 

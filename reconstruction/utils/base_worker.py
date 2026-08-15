@@ -162,7 +162,8 @@ class BaseWorker:
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
                 perceptual_loss_weight=self.opt.model['perceptual_loss_weight'],
-                use_log_var=not self.opt.model['not_use_log_var']
+                use_log_var=not self.opt.model['not_use_log_var'],
+                use_KL_divergence=self.opt.model['use_KL_divergence']
             )
         else:
             raise NotImplementedError("Unexpected model name: {}".format(self.opt.model['name']))
