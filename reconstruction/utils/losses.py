@@ -549,13 +549,14 @@ class RelativePerceptualL1Loss(PerceptualLoss):
 
 
 class AEU_Perceptual_QBLoss(AEU_QBLoss):
-    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1, use_log_var=True, use_KL_divergence=True):
+    def __init__(self, firing_rate_cost_weight, perceptual_loss_weight=1, use_log_var=True, use_KL_divergence=True, rho=0.05):
         super(AEU_Perceptual_QBLoss, self).__init__(firing_rate_cost_weight)
         self.firing_rate_cost_weight = firing_rate_cost_weight
         self.perceptual_loss_weight = perceptual_loss_weight
         self.perceptual_loss = RelativePerceptualL1Loss()
         self.use_log_var = use_log_var
         self.use_KL_divergence = use_KL_divergence
+        self.rho = rho
 
     def forward(self, net_in, net_out, anomaly_score=False, keepdim=False, all_scores=False, force_firing=False, firing_cost_multiplier=None, pure_l2_anomaly_score=False):
         x_hat, log_var = net_out['x_hat'], net_out['log_var']
@@ -629,15 +630,14 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
                 firing_loss += firing_loss2
                 
         else: # KL divergence loss from sparse autoencoder
-            rho_hat = torch.mean(net_out['unnoised_z'], dim=1) # average across neurons
-            rho = 1/64 # hard-coted, supposing minibatch size = 64
-            rho = torch.tensor([rho] * len(rho_hat)).to(rho_hat.device)
-            kl_d_loss = torch.sum(rho * torch.log(rho/rho_hat) + (1 - rho) * torch.log((1-rho) / (1-rho_hat)))
+            rho_hat = torch.mean(torch.clamp(net_out['unnoised_z'], +1e-5, 1.0-1e-5), dim=0) # average across minibatches
+            rho_ = torch.tensor([self.rho] * len(rho_hat)).to(rho_hat.device)
+            kl_d_loss = torch.sum(rho_ * torch.log(rho_/rho_hat) + (1 - rho_) * torch.log((1-rho_) / (1-rho_hat)))
             firing_loss = kl_d_loss * self.firing_rate_cost_weight
 
         loss += firing_loss #.expand_as(loss)
 
-        loss1 += firing_loss #.expand_as(loss1)
+#        loss1 += firing_loss #.expand_as(loss1)
 
         loss += net_out['top_recon_loss'].expand_as(loss) * 0
 

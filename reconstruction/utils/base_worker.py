@@ -157,13 +157,15 @@ class BaseWorker:
                 epsilon=self.opt.model['epsilon'],
                 using_heaviside=self.opt.model['heaviside'],
                 wf=self.opt.model['wf'],
-                num_top_latent=self.opt.model['latent_size_with_noise']
+                num_top_latent=self.opt.model['latent_size_with_noise'],
+                attention_gate=self.opt.model['attention_gate']
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
                 perceptual_loss_weight=self.opt.model['perceptual_loss_weight'],
                 use_log_var=not self.opt.model['not_use_log_var'],
-                use_KL_divergence=self.opt.model['use_KL_divergence']
+                use_KL_divergence=self.opt.model['use_KL_divergence'],
+                rho = self.opt.model['rho']
             )
         else:
             raise NotImplementedError("Unexpected model name: {}".format(self.opt.model['name']))

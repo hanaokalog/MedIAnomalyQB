@@ -1,6 +1,7 @@
 import time
 import torch
 import os
+import sys
 from sklearn import metrics
 from utils.util import compute_best_dice
 import numpy as np
@@ -186,12 +187,19 @@ class AEU_QBWorker(AEUWorker):
             losses_recon.append(loss_etc['recon_losses'])
             losses_perceptual.append(loss_etc['perceptual_losses'])
 
-            count += 1
+            count += firing.shape[0]
 
         training_firing_rates = (firing_count / count).flatten()
 
+        print(f"{training_firing_rates.mean()=}")
+        print(f"{training_firing_rates.max()=}")
+        print(f"{training_firing_rates.min()=}")
+        print(f"{training_firing_rates.shape=}")
+        print(f"{training_firing_rates[0:16]=}")
+
         # pass 2
         encoded_lengths = []
+        encoded_diff_lengths = []
         for idx_batch, data_batch in enumerate(self.train_loader):
             # binary latent
             self.net.using_heaviside = True
@@ -210,17 +218,39 @@ class AEU_QBWorker(AEUWorker):
                     firing[i, :].cpu().detach().numpy(), 
                     training_firing_rates.cpu().detach().numpy()
                 )
-                encoded_lengths.append(len(encoded))
+                encoded_lengths.append(len(encoded) * sys.getsizeof(encoded[0]))
+#                if idx_batch == 0:
+#                    print(f"{firing[i, 0:16].cpu().detach().numpy()=}")
+#                    print(f"{len(encoded) * sys.getsizeof(encoded[0])=}")
+
+            diffs = (img - net_out["x_hat"]).detach().cpu().numpy()
+            for i in range(diffs.shape[0]):
+                encoded_diff_lengths.append(utils.compressor.encoded_length_residual((((np.clip(np.squeeze(np.transpose((diffs[i,:,:,:]-.5)*2.0, (1,2,0))), -3.0, 3.0))+3.0)/6.0*255).astype('uint8'))) # each original image was normalized as (mean, std)=(.5, .5).  Here we convert it from the window (-3sigma, +3sigma) to (0, 255)
+
+            z_len = firing.shape[1]
 
         # make list
         train_losses_recon = torch.cat(losses_recon, dim=0).cpu().detach().numpy()
         train_losses_perceptual = torch.cat(losses_perceptual, dim=0).cpu().detach().numpy()
-        train_encoded_lengths = np.array(encoded_lengths)
+        train_encoded_lengths = np.array(encoded_lengths) 
+        train_encoded_diff_lengths = np.array(encoded_diff_lengths)
 
+        train_encoded_total_lengths = train_encoded_lengths + train_encoded_diff_lengths
+
+        compression_ratios = train_encoded_total_lengths / (z_len/8)
+
+        print(f"{z_len=}")
+        print(f"{train_encoded_lengths.mean()=}")
+        print(f"{train_encoded_diff_lengths.mean()=}")
+        print(f"{train_encoded_total_lengths.mean()=}")
+        print(f"{compression_ratios.mean()=}")
+        print(f"{compression_ratios.std()=}")
+        print(f"{compression_ratios.min()=}")
+        print(f"{compression_ratios.max()=}")
 
 
         # build an one-class SVM
-        train_metafeatures = np.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths), axis=1)
+        train_metafeatures = np.stack((train_losses_recon, train_losses_perceptual, train_encoded_lengths, train_encoded_diff_lengths), axis=1)
 
         oneclassmodel = make_pipeline(StandardScaler(), OneClassSVM())
 
@@ -316,10 +346,13 @@ class AEU_QBWorker(AEUWorker):
 
 
         test_score_maps = torch.cat(test_score_maps, dim=0)  # Nx1xHxW
-        test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
 
+        test_score_maps = np.clip(test_score_maps, -1.0e+3, +1.0e+3)
+
+        test_scores = torch.mean(test_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
         test_l2_score_maps = torch.cat(test_l2_score_maps, dim=0)  # Nx1xHxW
         test_l2_scores = torch.mean(test_l2_score_maps, dim=[1, 2, 3]).cpu().detach().numpy()  # N
+        test_l2_scores = np.clip(test_l2_scores, -1.0e+8, +1.0e+8)
 
         test_scores_firing = np.array(test_firing_rates) * self.firing_rate_cost_weight
         test_scores_real_firing = np.array(test_real_firing_rates) * self.firing_rate_cost_weight
@@ -330,6 +363,7 @@ class AEU_QBWorker(AEUWorker):
 
         # image-level metrics
         test_labels = np.array(test_labels)
+
         auc = metrics.roc_auc_score(test_labels, test_scores)
         ap = metrics.average_precision_score(test_labels, test_scores)
         ap_firing = metrics.average_precision_score(test_labels, test_scores_firing)
@@ -445,7 +479,7 @@ class AEU_QBWorker(AEUWorker):
         encoded_length = []
         for i in range(test_repts_binary.shape[0]):
             encoded = utils.compressor.encode(test_repts_binary[i, :], training_firing_rates.cpu().detach().numpy())
-            encoded_length.append(len(encoded))
+            encoded_length.append(len(encoded)* sys.getsizeof(encoded[0]))
         
         encoded_length = np.array(encoded_length)
         
@@ -459,29 +493,34 @@ class AEU_QBWorker(AEUWorker):
             encoded_diff_length.append(utils.compressor.encoded_length_residual((((np.clip(np.squeeze(np.transpose((diffs[i,:,:,:]-.5)*2.0, (1,2,0))), -3.0, 3.0))+3.0)/6.0*255).astype('uint8'))) # each original image was normalized as (mean, std)=(.5, .5).  Here we convert it from the window (-3sigma, +3sigma) to (0, 255)
         encoded_diff_length = np.array(encoded_diff_length)
 
+        auc_png_encoded_length = metrics.roc_auc_score(test_labels, encoded_diff_length)
+        ap_png_encoded_length = metrics.average_precision_score(test_labels, encoded_diff_length)
+
+        # total information
+
         total_encoded_length = encoded_length + encoded_diff_length
 
         auc_total_encoded_length = metrics.roc_auc_score(test_labels, total_encoded_length)
         ap_total_encoded_length = metrics.average_precision_score(test_labels, total_encoded_length)
 
         # seek the best model
-        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, total_encoded_length), axis=1)
+        test_metafeatures = np.stack((test_recon_losses, test_perceptual_losses, encoded_length, encoded_diff_length), axis=1)
 
         np.save(os.path.join(self.opt.train['save_dir'], 'train_metafeatures.npy'), train_metafeatures)
         np.save(os.path.join(self.opt.train['save_dir'], 'test_metafeatures.npy'), test_metafeatures)
         
         # drive FewshotClassifierTester
         if self.fsct is None:
-            self.fsct = utils.fewshot_classifiers.FewshotClassifierTester(10, np.zeros(train_metafeatures.shape[0]), test_labels, 42)
+            self.fsct = utils.fewshot_classifiers.FewshotClassifierTester(20, np.zeros(train_metafeatures.shape[0]), test_labels, 42)
 
         best_avg_rank, peeked_best_score, best_model_desc, test_score_with_the_best = self.fsct.do_validation(train_metafeatures, test_metafeatures, f"{epoch=}_")
 
         results.update({'best_avg_rank': best_avg_rank, 'auc_best_fewshot':test_score_with_the_best, 'auc_best_peeked': peeked_best_score, 'best_model_desc': best_model_desc, 'auc_encoded_length': auc_encoded_length, 'ap_encoded_length': ap_encoded_length})
         results.update({'auc_total_encoded_length': auc_total_encoded_length, 'ap_total_encoded_length': ap_total_encoded_length})
-
+        results.update({'auc_png_encoded_length': auc_png_encoded_length, 'ap_png_encoded_length': ap_png_encoded_length})
         results.update({'average_range_encoded_length': np.mean(encoded_length)})
         results.update({'average_png_encoded_length': np.mean(encoded_diff_length)})
-        
+
 
         # rept tsne
         test_tsne = TSNE(n_components=2).fit_transform(test_repts)  # Nx2

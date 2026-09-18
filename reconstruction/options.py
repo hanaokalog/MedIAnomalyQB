@@ -70,6 +70,8 @@ class Options:
         parser.add_argument('--using_identity_connection', action='store_true')
         parser.add_argument('--not_use_log_var', action='store_true')
         parser.add_argument('--use_KL_divergence', action='store_true')
+        parser.add_argument('--rho', type=float, default=0.05)
+        parser.add_argument('--attention_gate', action='store_true')
 
         args = parser.parse_args()
 
@@ -102,6 +104,8 @@ class Options:
         self.model['using_identity_connection'] = args.using_identity_connection
         self.model['not_use_log_var'] = args.not_use_log_var
         self.model['use_KL_divergence'] = args.use_KL_divergence
+        self.model['rho'] = args.rho
+        self.model['attention_gate'] = args.attention_gate
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)
