@@ -50,7 +50,6 @@ class QuasiBinarizingLayer(torch.nn.Module):
         assert x.shape[1] == self.latent_size
 
         # clip into [0,1] by sigmoid
-#        x = torch.sigmoid(x)
         x = torch.sigmoid(x)
         
         # unnoised_x

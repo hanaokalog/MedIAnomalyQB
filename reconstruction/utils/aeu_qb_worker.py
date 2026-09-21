@@ -90,6 +90,8 @@ class AEU_QBWorker(AEUWorker):
         firing_rates = AverageMeter()
         real_firing_rates = AverageMeter()
         
+        
+        
         for idx_batch, data_batch in enumerate(self.train_loader):
             img = data_batch['img']
             img_noised = img.clone()
@@ -102,7 +104,11 @@ class AEU_QBWorker(AEUWorker):
             else:
                 img_noised = img.cuda()
 
-            net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
+            
+            net_out["x_hat"] = net_out["x_hat"].float()
+            net_out["log_var"] = net_out["log_var"].float()
 
             if idx_batch == 0 and epoch%5==1:
                 if self.logger is not None:
@@ -129,8 +135,9 @@ class AEU_QBWorker(AEUWorker):
 
             firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
             real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
+
             loss_etc = self.criterion(img, net_out, force_firing=force_firing, firing_cost_multiplier=firing_cost_multiplier)
-            loss = loss_etc['loss']
+            loss = loss_etc['loss'].float()
             losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
             losses_logvar.update(loss_etc['log_var'].mean(), img.size(0))
             losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
@@ -464,14 +471,17 @@ class AEU_QBWorker(AEUWorker):
         img = img.reshape((img.shape[0]*img.shape[1], img.shape[2]*img.shape[3], img.shape[4]))
         if(img.shape[2] == 1):
             img = img.reshape((img.shape[0], img.shape[1]))
-        img = (img - torch.min(img)) / (torch.max(img) - torch.min(img))
-        plt.imsave(os.path.join(self.opt.train['save_dir'], f'imgs_Ep{epoch}.png'), img, cmap='gray')
+        img = torch.nan_to_num(img, nan=0.0, posinf=+10.0, neginf=-10.0)
+        img = (img - torch.min(img)) / (torch.max(img) - torch.min(img)) * 255.0
+        img = img.to(torch.uint8)
+        plt.imsave(os.path.join(self.opt.train['save_dir'], f'imgs_Ep{epoch}.png'), img.numpy(), cmap='gray')
         if self.logger is not None:
             if(len(img.shape) == 2):
-                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.T[:,:,np.newaxis], caption=f'imgs_Ep{epoch}', mode="L")})
+                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img[:,:,np.newaxis].numpy(), caption=f'imgs_Ep{epoch}', mode="L")})
             else:
                 assert(img.shape[2] == 3)
-                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.permute((2,1,0)), caption=f'imgs_Ep{epoch}', mode="RGB")})
+                print(img.shape)
+                self.logger.log(step=epoch, data={f'imgs/Ep{epoch}': wandb.Image(img.numpy(), caption=f'imgs_Ep{epoch}', mode="RGB")})
 
         test_repts_binary = np.concatenate(test_repts_binary, axis=0)  # Nxd
             

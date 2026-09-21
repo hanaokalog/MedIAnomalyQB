@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from networks.base_units.swish import CustomSwish
 from networks.base_units.ws_conv import WNConv2d
 from networks.base_units.quasibinarize import QuasiBinarizingLayer
+from networks.base_units.dcae_residual_autoencoding import ResidualDown, ResidualUp
+from networks.base_units.attn_block import attn_block
 
 from networks.unet import UNet
 
@@ -56,18 +58,19 @@ class UNet_QB(UNet):
             wf=4,
             padding=True,
             norm="group",
-            up_mode='upconv',
+#            up_mode='upconv',
+            up_mode='residual_autoencoder',
             image_size = 128, 
             epsilon=1.0, 
-            latent_sizes_per_pixel=(1,2,4,8,16),
+            latent_sizes_per_pixel=(0,0,0,0,0),
+#            latent_sizes_per_pixel=(1,2,4,8,16),
 #            latent_sizes_per_pixel=(4,8,16,32,64),
 #            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
-#            latent_sizes_per_pixel=(1,2,4,8,16),
             num_top_latent=16384, # 4096,
             mid_channels_per_pixel = 32,
             using_heaviside=False,
             adding_noise_in_test=False,
-            using_identity_connection=False,
+            using_identity_connection=True,
             attention_gate=True
     ):
         """
@@ -93,7 +96,11 @@ class UNet_QB(UNet):
                            'upsample' will use bilinear upsampling.
         """
         super(UNet, self).__init__()
-        assert up_mode in ('upconv', 'upsample')
+        assert up_mode in ('upconv', 'upsample', 'residual_autoencoder')
+        if up_mode == 'residual_autoencoder':
+            self.down_mode = 'residual_autoencoder'
+        else:
+            self.down_mode = None
         self.padding = padding
         self.depth = depth
         prev_channels = in_channels
@@ -108,15 +115,22 @@ class UNet_QB(UNet):
         self.image_average_bias = 1 # nn.Parameter(torch.tensor(np.zeros((1,in_channels,image_size,image_size), dtype=np.float32)))
         self.image_std_bias = 1 # nn.Parameter(torch.tensor(np.ones((1,in_channels,image_size,image_size), dtype=np.float32)))
 
+        # down blocks
+
         self.preneckconvs = nn.ModuleList()
         self.bottlenecks = nn.ModuleList()
         self.postneckconvs = nn.ModuleList()
 
         self.down_path = nn.ModuleList()
+        if self.down_mode == 'residual_autoencoder':
+            self.residual_down = nn.ModuleList()
         for i in range(depth):
             self.down_path.append(
                 UNetConvBlock(prev_channels, 2 ** (wf + i), padding, norm=norm, using_identity=using_identity_connection)
             )
+            if self.down_mode == 'residual_autoencoder':
+                self.residual_down.append(ResidualDown(2 ** (wf + i), 2 ** (wf + i)))
+
             if latent_sizes_per_pixel[i] == 'identity':
                 self.preneckconvs.append(
                     nn.Identity()
@@ -133,25 +147,37 @@ class UNet_QB(UNet):
                     nn.Identity()
                 )
             else:
-                self.preneckconvs.append(
-                    nn.Conv2d(2 ** (wf + i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
-                )
-                self.bottlenecks.append(
-                    QuasiBinarizingLayer(
-                        latent_sizes_per_pixel[i] * (image_size//(2**i))**2, 
-                        epsilon_per_dimension=epsilon,
-                        using_heaviside=using_heaviside,
-                        adding_noise_in_test=adding_noise_in_test
+                if 0<latent_sizes_per_pixel[i]:
+                    self.preneckconvs.append(
+                        nn.Conv2d(2 ** (wf + i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
                     )
-                )
-                self.postneckconvs.append(
-                    nn.Conv2d(latent_sizes_per_pixel[i], 2 ** (wf + i), kernel_size=1, padding=0)
-                )
+                    self.bottlenecks.append(
+                        QuasiBinarizingLayer(
+                            latent_sizes_per_pixel[i] * (image_size//(2**i))**2, 
+                            epsilon_per_dimension=epsilon,
+                            using_heaviside=using_heaviside,
+                            adding_noise_in_test=adding_noise_in_test
+                        )
+                    )
+                    self.postneckconvs.append(
+                        nn.Conv2d(latent_sizes_per_pixel[i], 2 ** (wf + i), kernel_size=1, padding=0)
+                    )
+                else:
+                    self.preneckconvs.append(None)
+                    self.bottlenecks.append(None)
+                    self.postneckconvs.append(None)
             prev_channels = 2 ** (wf + i)
+
+        # top block
+
+        top_input_image_size = (image_size//(2**(depth-1)))
 
         self.top_prepreneckConv = nn.Conv2d(prev_channels,mid_channels_per_pixel, kernel_size=1, padding=0)
         self.top_norm_interpre = nn.BatchNorm2d(mid_channels_per_pixel)
-        self.top_preneckFC = nn.Linear(mid_channels_per_pixel * (image_size//(2**(depth-1)))**2, num_top_latent)
+        self.top_preneckFC = nn.Linear(mid_channels_per_pixel * top_input_image_size**2, num_top_latent)
+
+        assert num_top_latent // (top_input_image_size**2) * (top_input_image_size**2) == num_top_latent
+        self.top_pre_shortcut_conv = nn.Conv2d(prev_channels, num_top_latent // (top_input_image_size**2), kernel_size=1, padding=0)
 
         if 0:
 
@@ -187,12 +213,18 @@ class UNet_QB(UNet):
         self.top_norm_interpost = nn.BatchNorm2d(mid_channels_per_pixel)
         self.top_postpostneckConv = nn.Conv2d(mid_channels_per_pixel, prev_channels, kernel_size=1, padding=0)
 
+        self.top_post_shortcut_conv = nn.Conv2d(num_top_latent // (top_input_image_size**2), prev_channels, kernel_size=1, padding=0)
+
+        # up blocks
+
         self.up_path = nn.ModuleList()
+        current_image_size = self.image_size // (2 ** (depth-1))
         for i in reversed(range(depth - 1)):
             self.up_path.append(
-                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0), attention_gate=attention_gate)
+                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0), attention_gate=attention_gate,  attention_selector=True, image_size=current_image_size, using_identity=using_identity_connection)
             )
             prev_channels = 2 ** (wf + i)
+            current_image_size = current_image_size * 2
 
         self.last = nn.Sequential(
             nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1),
@@ -216,7 +248,8 @@ class UNet_QB(UNet):
         assert isinstance(value, bool)
         self._using_heaviside = value
         for bottleneck in self.bottlenecks:
-            bottleneck.using_heaviside = value
+            if bottleneck is not None:
+                bottleneck.using_heaviside = value
         self.top_bottleneck.using_heaviside = value
 
     @property
@@ -228,7 +261,8 @@ class UNet_QB(UNet):
         assert isinstance(value, bool)
         self._adding_noise_in_test = value
         for bottleneck in self.bottlenecks:
-            bottleneck.adding_noise_in_test = value
+            if bottleneck is not None:
+                bottleneck.adding_noise_in_test = value
         self.top_bottleneck.adding_noise_in_test = value
 
     def forward_down(self, x):
@@ -241,42 +275,56 @@ class UNet_QB(UNet):
         for i, down in enumerate(self.down_path):
             x = down(x)
 
-            # make shortcut
-            sc = self.preneckconvs[i](x)
-            
-            sc_shape = sc.shape
-            sc = sc.reshape([sc.shape[0], -1])
-            res = self.bottlenecks[i](sc)    # bottleneck
-            sc = res["x"]
+            # make U-net skip connection with quasibinary bottleneck
+            if self.preneckconvs[i] is None:
+                sc = None
+            else:
+                sc = self.preneckconvs[i](x)
+                
+                sc_shape = sc.shape
+                sc = sc.reshape([sc.shape[0], -1])
+                res = self.bottlenecks[i](sc)    # bottleneck
+                sc = res["x"]
 
-            firing_rates.append(res["expected_firing_rate"])
-            real_firing_rates.append(res["real_firing_rate"])
-            unnoised_z.append(res["unnoised_x"])
-            z.append(res["x"])
+                firing_rates.append(res["expected_firing_rate"])
+                real_firing_rates.append(res["real_firing_rate"])
+                unnoised_z.append(res["unnoised_x"])
+                z.append(res["x"])
 
-            sc = sc.reshape(sc_shape)
+                sc = sc.reshape(sc_shape)
 
-            sc = self.postneckconvs[i](sc)
+                sc = self.postneckconvs[i](sc)
 
             blocks.append(sc)
 
             # pooling
             if i != len(self.down_path) - 1:
-                x = F.avg_pool2d(x, 2)
+                if self.down_mode == 'residual_autoencoder':
+                    x = self.residual_down[i](x)
+                else:
+                    x = F.avg_pool2d(x, 2)
 
         return x, blocks, firing_rates, real_firing_rates, unnoised_z, z
 
     def forward_up_without_last(self, x, blocks, shortcut_multiplier = 1.0):
         for i, up in enumerate(self.up_path):
             skip = blocks[-i - 2]
-            x = up(x, skip * shortcut_multiplier)
+            if skip is None:
+                x = up(x, None)
+            else:
+                x = up(x, skip * shortcut_multiplier)
 
         return x
 
     def forward_without_last(self, x, shortcut_multiplier = 1.0):
+
+        # down paths
+        
         x, blocks, firing_rates, real_firing_rates, unnoised_z, z = self.forward_down(x)
 
         # top bottleneck
+
+        shortcut = x
 
         x = self.top_prepreneckConv(x)
         x = self.top_norm_interpre(x)
@@ -286,6 +334,8 @@ class UNet_QB(UNet):
         x = x.reshape([x.shape[0], -1])
         x = self.top_preneckFC(x)
         x = self.top_pre_batchnorm(x)
+        
+        x = x + self.top_pre_shortcut_conv(shortcut).reshape(x.shape)
         
         x_preneck = x
 
@@ -299,16 +349,18 @@ class UNet_QB(UNet):
 
             x += self.top_preneck_bias
 
-        res = self.top_bottleneck(x)
-        x = res["x"]
+        if 1:
+            x = self.patan(x) # to avoid initial vanishing gradient due to sigmoid
 
+#        x /= 1000 # to avoid initial vanishing gradient due to sigmoid
+
+        res = self.top_bottleneck(x)
+        
+        x = res["x"]
         firing_rates.append(res["expected_firing_rate"])
         real_firing_rates.append(res["real_firing_rate"])
         unnoised_z.append(res["unnoised_x"])
         z.append(res["x"])
-
-        if 0:
-            x = self.patan(x)
 
         if 0:
             x = self.top_norm_optional_2(x)
@@ -323,6 +375,7 @@ class UNet_QB(UNet):
 
         top_recon_loss = (torch.sum((x - x_preneck)**2, dim=1, keepdims=True)**.5).reshape((x_shape[0], 1, 1, 1))
 
+        shortcut = x
 
         x = self.top_postneckFC(x)
         x = x.reshape(x_shape)
@@ -330,7 +383,12 @@ class UNet_QB(UNet):
         x = self.top_norm_interpost(x)
         x = self.top_postpostneckConv(x)
 
+        x = x + self.top_post_shortcut_conv(shortcut.reshape((x.shape[0], -1, x.shape[2], x.shape[3])))
+
+        # up paths
+
         x = self.forward_up_without_last(x, blocks, shortcut_multiplier = shortcut_multiplier)
+
         return x, firing_rates, real_firing_rates, unnoised_z, z, top_recon_loss
 
     def forward(self, x, shortcut_multiplier = 1.0):
@@ -474,21 +532,20 @@ class UNetConvBlock(nn.Module):
         self.using_identity = using_identity
         if in_size != out_size:
             self.shortcut = nn.Conv2d(in_size, out_size, kernel_size=1)
-            self.relu = nn.ReLU()
 
     def forward(self, x):
         if self.using_identity:
             if self.in_size == self.out_size:
                 out = x + self.block(x)
             else:
-                out = self.relu(self.shortcut(x)) + self.block(x)
+                out = self.shortcut(x) + self.block(x)
         else:
             out = self.block(x)
         return out
 
 
 class UNetUpBlock(nn.Module):
-    def __init__(self, in_size, out_size, up_mode, padding, norm="group", islast=False, attention_gate=True):
+    def __init__(self, in_size, out_size, up_mode, padding, norm="group", islast=False, attention_gate=True, attention_selector=True, image_size=None, using_identity=False):
         super(UNetUpBlock, self).__init__()
         if up_mode == 'upconv':
             self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2, stride=2)
@@ -497,8 +554,10 @@ class UNetUpBlock(nn.Module):
                 nn.Upsample(mode='bilinear', scale_factor=2),
                 nn.Conv2d(in_size, out_size, kernel_size=1),
             )
+        elif up_mode == 'residual_autoencoder':
+            self.up = ResidualUp(in_size, out_size)
 
-        self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm)
+        self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm, using_identity=using_identity)
 
         if attention_gate:
             assert(in_size//2 == out_size)
@@ -506,6 +565,9 @@ class UNetUpBlock(nn.Module):
             self.cbamcag = CBAMCrossAttentionGate(F_g=conv_in_size, F_l=conv_in_size, F_int=conv_in_size//2)
         else:
             self.cbamcag = None
+            
+        if attention_selector:
+            self.attention_selector = attn_block(out_size, image_size ** 2)
 
     def center_crop(self, layer, target_size):
         _, _, layer_height, layer_width = layer.size()
@@ -515,6 +577,8 @@ class UNetUpBlock(nn.Module):
 
     def forward(self, x, bridge):
         up = self.up(x)
+        if bridge is None:
+            bridge = torch.zeros_like(up)
         crop1 = self.center_crop(bridge, up.shape[2:])
 
         if self.cbamcag is not None:
@@ -523,6 +587,8 @@ class UNetUpBlock(nn.Module):
         out = torch.cat([up, crop1], 1)
         
         out = self.conv_block(out)
+        
+        out = self.attention_selector(out)
         
         return out
 
