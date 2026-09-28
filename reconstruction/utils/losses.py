@@ -6,6 +6,9 @@ from collections import defaultdict, OrderedDict
 import os
 from torchvision.models import vgg19
 
+from utils.shifted_perceptual_loss import random_shift_pair
+
+
 
 class AELoss(nn.Module):
     def __init__(self, grad_score=False):
@@ -387,7 +390,8 @@ class PerceptualLoss(torch.nn.Module):
                  feature_weights=None,
                  use_feature_normalization=False,
                  use_L1_norm=False,
-                 use_relative_error=False):
+                 use_relative_error=False,
+                 random_shift=False):
         super(PerceptualLoss, self).__init__()
 
         # Default value of the original paper
@@ -425,6 +429,8 @@ class PerceptualLoss(torch.nn.Module):
 
         self.set_new_weights(img_weight, feature_weights)
 
+        self.random_shift = random_shift
+
     def set_reduction(self, reduction):
         self.reduction = reduction
 
@@ -440,6 +446,9 @@ class PerceptualLoss(torch.nn.Module):
 
         x = self._preprocess(x)
         y = self._preprocess(y)
+
+        if(self.random_shift and keepdim==False):
+            x, y = random_shift_pair(x, y, 8, per_sample=True)
 
         f_x = self.model(x, layers)
         f_y = self.model(y, layers)
@@ -538,14 +547,15 @@ class PerceptualLoss(torch.nn.Module):
 
 
 class RelativePerceptualL1Loss(PerceptualLoss):
-    def __init__(self, reduction='mean', img_weight=0, feature_weights=None):
+    def __init__(self, reduction='mean', img_weight=0, feature_weights=None, random_shift=False):
         super().__init__(
             reduction=reduction,
             img_weight=img_weight,
             feature_weights=feature_weights,
             use_feature_normalization=True,
             use_L1_norm=True,
-            use_relative_error=True)
+            use_relative_error=True,
+            random_shift=random_shift)
 
 
 class AEU_Perceptual_QBLoss(AEU_QBLoss):
@@ -553,7 +563,7 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
         super(AEU_Perceptual_QBLoss, self).__init__(firing_rate_cost_weight)
         self.firing_rate_cost_weight = firing_rate_cost_weight
         self.perceptual_loss_weight = perceptual_loss_weight
-        self.perceptual_loss = RelativePerceptualL1Loss()
+        self.perceptual_loss = RelativePerceptualL1Loss(random_shift=True)
         self.use_log_var = use_log_var
         self.use_KL_divergence = use_KL_divergence
         self.rho = rho
@@ -630,9 +640,12 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
                 firing_loss += firing_loss2
                 
         else: # KL divergence loss from sparse autoencoder
-            rho_hat = torch.mean(torch.clamp(net_out['unnoised_z'], +1e-5, 1.0-1e-5), dim=0) # average across minibatches
+            rho_hat = torch.mean(torch.clamp(net_out['unnoised_z'].to(torch.float32), +1e-3, 1.0-1e-3), dim=0) # average across minibatches
             rho_ = torch.tensor([self.rho] * len(rho_hat)).to(rho_hat.device)
-            kl_d_loss = torch.sum(rho_ * torch.log(rho_/rho_hat) + (1 - rho_) * torch.log((1-rho_) / (1-rho_hat)))
+            kl_d_losses = rho_ * torch.log(rho_/rho_hat) + (1 - rho_) * torch.log((1-rho_) / (1-rho_hat))
+            kl_d_losses = torch.clamp(kl_d_losses, -1e+3, +1e+3) # to avoid overflow
+            kl_d_loss = torch.sum(kl_d_losses)
+            kl_d_loss = torch.nan_to_num(kl_d_loss)
             firing_loss = kl_d_loss * self.firing_rate_cost_weight
 
         loss += firing_loss #.expand_as(loss)

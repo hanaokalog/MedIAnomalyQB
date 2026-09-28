@@ -62,8 +62,8 @@ class UNet_QB(UNet):
             up_mode='residual_autoencoder',
             image_size = 128, 
             epsilon=1.0, 
-            latent_sizes_per_pixel=(0,0,0,0,0),
-#            latent_sizes_per_pixel=(1,2,4,8,16),
+#            latent_sizes_per_pixel=(0,0,0,0,0),
+            latent_sizes_per_pixel=(1,2,4,8,16),
 #            latent_sizes_per_pixel=(4,8,16,32,64),
 #            latent_sizes_per_pixel=('identity','identity','identity','identity','identity'),
             num_top_latent=16384, # 4096,
@@ -226,12 +226,16 @@ class UNet_QB(UNet):
             prev_channels = 2 ** (wf + i)
             current_image_size = current_image_size * 2
 
+        # last convs
+
         self.last = nn.Sequential(
+            nn.LeakyReLU(negative_slope=0.01),
             nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1),
         )
         self.last_logvar = nn.Sequential(
+            nn.LeakyReLU(negative_slope=0.01),
             nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1),

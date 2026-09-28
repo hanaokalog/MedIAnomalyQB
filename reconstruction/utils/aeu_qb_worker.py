@@ -90,72 +90,73 @@ class AEU_QBWorker(AEUWorker):
         firing_rates = AverageMeter()
         real_firing_rates = AverageMeter()
         
+#        with torch.autograd.set_detect_anomaly(True):
+        if 1:
         
-        
-        for idx_batch, data_batch in enumerate(self.train_loader):
-            img = data_batch['img']
-            img_noised = img.clone()
+            for idx_batch, data_batch in enumerate(self.train_loader):
+                img = data_batch['img']
+                img_noised = img.clone()
 
-            img = img.cuda()
+                img = img.cuda()
 
-            if 0 < noise_level:
-                img_noised += make_noise_like(img, noise_level)
-                img_noised = img_noised.cuda()
-            else:
-                img_noised = img.cuda()
+                if 0 < noise_level:
+                    img_noised += make_noise_like(img, noise_level)
+                    img_noised = img_noised.cuda()
+                else:
+                    img_noised = img.cuda()
 
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
-            
-            net_out["x_hat"] = net_out["x_hat"].float()
-            net_out["log_var"] = net_out["log_var"].float()
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    net_out = self.net(img_noised, shortcut_multiplier=shortcut_multiplier)
+                
+                net_out["x_hat"] = net_out["x_hat"].float()
+                net_out["log_var"] = net_out["log_var"].float()
 
-            if idx_batch == 0 and epoch%5==1:
-                if self.logger is not None:
-                    if(img.shape[1] == 1):
-                        img_noised1 = img_noised[0,0,:,:]
-                        img_denoised1 = net_out["x_hat"][0,0,:,:]
-                        img_logvar1 = net_out["log_var"][0,0,:,:]
-                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
-                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
-                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.T[:,:,np.newaxis], caption=f'noised_Ep{epoch}', mode="L")})
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.T[:,:,np.newaxis], caption=f'denoised_Ep{epoch}', mode="L")})
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.T[:,:,np.newaxis], caption=f'logvar_Ep{epoch}', mode="L")})
-                    else:
-                        img_noised1 = img_noised[0,:,:,:]
-                        img_denoised1 = net_out["x_hat"][0,:,:,:]
-                        img_logvar1 = net_out["log_var"][0,:,:,:]
-                        img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
-                        img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
-                        img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.permute((0,1,2)), caption=f'noised_Ep{epoch}', mode="RGB")})
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.permute((0,1,2)), caption=f'denoised_Ep{epoch}', mode="RGB")})
-                        self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.permute((0,1,2)), caption=f'logvar_Ep{epoch}', mode="RGB")})
+                if idx_batch == 0 and epoch%5==1:
+                    if self.logger is not None:
+                        if(img.shape[1] == 1):
+                            img_noised1 = img_noised[0,0,:,:]
+                            img_denoised1 = net_out["x_hat"][0,0,:,:]
+                            img_logvar1 = net_out["log_var"][0,0,:,:]
+                            img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                            img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                            img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.T[:,:,np.newaxis], caption=f'noised_Ep{epoch}', mode="L")})
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.T[:,:,np.newaxis], caption=f'denoised_Ep{epoch}', mode="L")})
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.T[:,:,np.newaxis], caption=f'logvar_Ep{epoch}', mode="L")})
+                        else:
+                            img_noised1 = img_noised[0,:,:,:]
+                            img_denoised1 = net_out["x_hat"][0,:,:,:]
+                            img_logvar1 = net_out["log_var"][0,:,:,:]
+                            img_noised1 = (img_noised1 - img_noised1.min()) / (img_noised1.max() - img_noised1.min())
+                            img_denoised1 = (img_denoised1 - img_denoised1.min()) / (img_denoised1.max() - img_denoised1.min())
+                            img_logvar1 = (img_logvar1 - img_logvar1.min()) / (img_logvar1.max() - img_logvar1.min())
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_noised': wandb.Image(img_noised1.permute((0,1,2)), caption=f'noised_Ep{epoch}', mode="RGB")})
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_denoised': wandb.Image(img_denoised1.permute((0,1,2)), caption=f'denoised_Ep{epoch}', mode="RGB")})
+                            self.logger.log(step=epoch, data={f'imgs_train/Ep{epoch}_logvar': wandb.Image(img_logvar1.permute((0,1,2)), caption=f'logvar_Ep{epoch}', mode="RGB")})
 
-            firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
-            real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
+                firing_rates.update(net_out["firing_rate"].mean(), img.size(0))
+                real_firing_rates.update(net_out["real_firing_rate"].mean(), img.size(0))
 
-            loss_etc = self.criterion(img, net_out, force_firing=force_firing, firing_cost_multiplier=firing_cost_multiplier)
-            loss = loss_etc['loss'].float()
-            losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
-            losses_logvar.update(loss_etc['log_var'].mean(), img.size(0))
-            losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
-            if 'perceptual_loss' in loss_etc:
-                losses_perceptual.update(loss_etc['perceptual_loss'].mean(), img.size(0))
+                loss_etc = self.criterion(img, net_out, force_firing=force_firing, firing_cost_multiplier=firing_cost_multiplier)
+                loss = loss_etc['loss'].float()
+                losses_recon.update(loss_etc['recon_loss'].mean(), img.size(0))
+                losses_logvar.update(loss_etc['log_var'].mean(), img.size(0))
+                losses_firing.update(loss_etc['firing_loss'].mean(), img.size(0))
+                if 'perceptual_loss' in loss_etc:
+                    losses_perceptual.update(loss_etc['perceptual_loss'].mean(), img.size(0))
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            losses.update(loss.item(), img.size(0))
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                losses.update(loss.item(), img.size(0))
 
-        print("expected_firing_rate: {:.4f}, real_firing_rate: {:,.4f}, loss_recon: {:.4f}, loss_firing: {:.4f}, loss_perceptual: {:.4f}".format(
-                firing_rates.avg, 
-                real_firing_rates.avg,
-                losses_recon.avg, 
-                losses_firing.avg,
-                losses_perceptual.avg
-        ))
+            print("expected_firing_rate: {:.4f}, real_firing_rate: {:,.4f}, loss_recon: {:.4f}, loss_firing: {:.4f}, loss_perceptual: {:.4f}".format(
+                    firing_rates.avg, 
+                    real_firing_rates.avg,
+                    losses_recon.avg, 
+                    losses_firing.avg,
+                    losses_perceptual.avg
+            ))
         return losses.avg, losses_recon.avg, losses_logvar.avg, losses_firing.avg, losses_perceptual.avg, firing_rates.avg, real_firing_rates.avg
 
 
@@ -422,7 +423,7 @@ class AEU_QBWorker(AEUWorker):
 
         # latent representaions
         test_repts = np.concatenate(test_repts, axis=0)  # Nxd
-        plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
+#        plt.imsave(os.path.join(self.opt.train['save_dir'], f'repts_Ep{epoch}.png'), test_repts[:,:])
         #if self.logger is not None:
         #    repts_img = np.stack((
         #        np.clip(test_repts[:,:]*2-1.0, 0., 1.), 
