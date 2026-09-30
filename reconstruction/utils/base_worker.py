@@ -53,6 +53,9 @@ class BaseWorker:
         torch.manual_seed(self.seed)
         torch.cuda.manual_seed(self.seed)
         torch.cuda.manual_seed_all(self.seed)
+        # v31: fixed input size -> let cuDNN pick the fastest kernels; allow TF32 for fp32 matmuls
+        torch.backends.cudnn.benchmark = True
+        torch.set_float32_matmul_precision('high')
 
     def set_network_loss(self):
         if self.opt.model['name'] in ['ae', 'ceae', 'ae-ssim', 'ae-l1', 'ae-perceptual']:
@@ -158,7 +161,11 @@ class BaseWorker:
                 using_heaviside=self.opt.model['heaviside'],
                 wf=self.opt.model['wf'],
                 num_top_latent=self.opt.model['latent_size_with_noise'],
-                attention_gate=self.opt.model['attention_gate']
+                attention_gate=self.opt.model['attention_gate'],
+                using_identity_connection=self.opt.model['using_identity_connection'],
+                top_mixer=self.opt.model['top_mixer'],
+                top_attn_depth=self.opt.model['top_attn_depth'],
+                norm_type=self.opt.model['norm_type']
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
@@ -173,7 +180,8 @@ class BaseWorker:
 
     def set_optimizer(self):
         self.optimizer = torch.optim.AdamW(self.net.parameters(), self.opt.train['lr'],
-                                          weight_decay=self.opt.train['weight_decay'])
+                                          weight_decay=self.opt.train['weight_decay'],
+                                          fused=torch.cuda.is_available())
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
         #                                                             T_max=self.opt.train['epochs'],
         #                                                             eta_min=5e-5)
@@ -234,8 +242,18 @@ class BaseWorker:
             raise Exception("Invalid dataset: {}".format(self.opt.dataset))
 
         if not test:
-            self.train_loader = DataLoader(self.train_set, batch_size=self.opt.train['batch_size'], shuffle=True)
-        self.test_loader = DataLoader(self.test_set, batch_size=1, shuffle=False)
+            self.train_loader = DataLoader(self.train_set, batch_size=self.opt.train['batch_size'], shuffle=True,
+                                           **self._loader_kwargs())
+        self.test_loader = DataLoader(self.test_set, batch_size=self._test_batch_size(), shuffle=False,
+                                      **self._loader_kwargs())
+
+    def _test_batch_size(self):
+        # other workers assume batch_size = 1 in evaluate(); AEU_QBWorker overrides this
+        return 1
+
+    def _loader_kwargs(self):
+        nw = self.opt.train.get('num_workers', 0)
+        return dict(num_workers=nw, pin_memory=torch.cuda.is_available(), persistent_workers=nw > 0)
 
     def set_logging(self, test=False):
         example_in = torch.zeros((1, self.opt.model["in_c"],
@@ -264,6 +282,12 @@ class BaseWorker:
                        "using_identity_connection": self.opt.model['using_identity_connection'],
                        "wf": self.opt.model['wf'],
                        "latent_size_with_noise": self.opt.model['latent_size_with_noise'],
+                       "top_mixer": self.opt.model.get('top_mixer'),
+                       "top_attn_depth": self.opt.model.get('top_attn_depth'),
+                       "norm_type": self.opt.model.get('norm_type'),
+                       "full_eval": self.opt.test.get('full_eval'),
+                       "test_batch_size": self._test_batch_size(),
+                       "perceptual_bf16": self.opt.train.get('perceptual_bf16'),
 
                        "epochs": self.opt.train["epochs"],
                        "batch_size": self.opt.train["batch_size"],
@@ -317,9 +341,10 @@ class BaseWorker:
                                      transform=test_transform, mode='test')
         else:
             raise Exception("Invalid dataset: {}".format(self.opt.dataset))
-        self.test_loader = DataLoader(self.test_set, batch_size=1, shuffle=False)
+        self.test_loader = DataLoader(self.test_set, batch_size=self._test_batch_size(), shuffle=False,
+                                      **self._loader_kwargs())
         print("=> Set test dataset: {} | Input size: {} | Batch size: {}".format(self.opt.dataset,
-                                                                                 self.opt.model['input_size'], 1))
+                                                                                 self.opt.model['input_size'], self._test_batch_size()))
 
     def save_checkpoint(self):
         torch.save(self.net.state_dict(), os.path.join(self.opt.train['save_dir'], "checkpoints", "model.pt"))

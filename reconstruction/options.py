@@ -67,11 +67,26 @@ class Options:
         parser.add_argument('--wf', type=int, default=4, help='number of filters in the first layer is 2**wf')
         parser.add_argument('--latent_size_with_noise', type=int, default=4096, help='latent size for noised models')
         parser.add_argument('--noise', type=float, default=0.0, help='denoising AE noise level (per image standard deviation)')
-        parser.add_argument('--using_identity_connection', action='store_true')
+        # v31: default True (this was the behaviour actually used in v30); disable with --no-using_identity_connection
+        parser.add_argument('--using_identity_connection', action=argparse.BooleanOptionalAction, default=True,
+                            help='residual (identity) connection inside the U-Net conv blocks')
         parser.add_argument('--not_use_log_var', action='store_true')
         parser.add_argument('--use_KL_divergence', action='store_true')
         parser.add_argument('--rho', type=float, default=0.05)
         parser.add_argument('--attention_gate', action='store_true')
+        # v31
+        parser.add_argument('--top_mixer', type=str, default='attn', choices=['attn', 'fc'],
+                            help='bottom bottleneck mixer: attn (token transformer on 8x8 grid) or fc (legacy dense layers)')
+        parser.add_argument('--top_attn_depth', type=int, default=2, help='number of attention blocks before/after the bottom QB')
+        parser.add_argument('--norm_type', type=str, default='group', choices=['group', 'batch'],
+                            help='normalisation around the bottom QB and in the attention gates (group: per-sample; batch: legacy)')
+        parser.add_argument('--test_batch_size', type=int, default=64,
+                            help='batch size of the evaluation loop (v31; was 1). Results are batch-independent with GroupNorm/eval-mode BN')
+        parser.add_argument('--num_workers', type=int, default=4, help='DataLoader workers (0 = load in the main process)')
+        parser.add_argument('--perceptual_bf16', action=argparse.BooleanOptionalAction, default=True,
+                            help='run the VGG19 perceptual loss in bf16 autocast during training (evaluation stays fp32)')
+        parser.add_argument('--full_eval', action='store_true',
+                            help='also run range coding, png residual coding, one-class/few-shot classifiers and t-SNE (slow)')
 
         args = parser.parse_args()
 
@@ -106,6 +121,9 @@ class Options:
         self.model['use_KL_divergence'] = args.use_KL_divergence
         self.model['rho'] = args.rho
         self.model['attention_gate'] = args.attention_gate
+        self.model['top_mixer'] = args.top_mixer
+        self.model['top_attn_depth'] = args.top_attn_depth
+        self.model['norm_type'] = args.norm_type
 
         # --- training params --- #
         self.train['save_dir'] = '{}/{}/fold_{}'.format(self.result_dir, self.model['name'], self.fold)
@@ -120,6 +138,10 @@ class Options:
 
         # --- test parameters --- #
         self.test['save_flag'] = args.test_save_flag
+        self.test['full_eval'] = args.full_eval
+        self.test['batch_size'] = args.test_batch_size
+        self.train['num_workers'] = args.num_workers
+        self.train['perceptual_bf16'] = args.perceptual_bf16
         self.test['save_dir'] = '{:s}/test_results'.format(self.train['save_dir'])
         if not args.test_model_path:
             self.test['model_path'] = '{:s}/checkpoints/model.pth'.format(self.train['save_dir'])

@@ -55,7 +55,32 @@ def compute_dice(preds: np.ndarray, targets: np.ndarray) -> float:
     return dice
 
 
-def compute_best_dice(preds: np.ndarray, targets: np.ndarray,
+def compute_best_dice(preds, targets, n_thresh: int = 200, num_processes: int = 8):
+    """
+    v31: exact, vectorised replacement of the multiprocessing version below (same 200 quantile thresholds,
+    same strict ``pred > threshold`` rule, identical result). Runs on the GPU when available:
+    one sort + cumulative sum instead of 200 x (threshold, binary check, sum) over all pixels.
+    """
+    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+    p = torch.as_tensor(np.asarray(preds), dtype=torch.float32).reshape(-1).to(dev)
+    t = torch.as_tensor(np.asarray(targets)).reshape(-1).to(dev)
+    if not bool(((t == 0) | (t == 1)).all()):
+        raise ValueError('Targets must be binary')
+    num = p.numel()
+    step = num // n_thresh
+    s, order = torch.sort(p, stable=True)
+    thresholds = s[torch.arange(0, num, step, device=dev)]
+    cum_pos = torch.cat([torch.zeros(1, dtype=torch.int64, device=dev), torch.cumsum(t[order].to(torch.int64), 0)])
+    n_pos = cum_pos[-1]
+    idx = torch.searchsorted(s, thresholds, right=True)          # #{p <= thr}
+    tp = (n_pos - cum_pos[idx]).double()                          # #{p > thr and target == 1}
+    pred_pos = (num - idx).double()                               # #{p > thr}
+    scores = 2 * tp / (pred_pos + n_pos.double())
+    k = int(torch.argmax(scores))
+    return float(scores[k]), thresholds[k].cpu().numpy()
+
+
+def compute_best_dice_legacy(preds: np.ndarray, targets: np.ndarray,
                       # n_thresh: float = 100,
                       n_thresh: float = 200,
                       num_processes: int = 8):

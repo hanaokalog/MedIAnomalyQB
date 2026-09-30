@@ -450,8 +450,15 @@ class PerceptualLoss(torch.nn.Module):
         if(self.random_shift and keepdim==False):
             x, y = random_shift_pair(x, y, 8, per_sample=True)
 
-        f_x = self.model(x, layers)
-        f_y = self.model(y, layers)
+        # v31: optional bf16 autocast for the (frozen) VGG19 in the training path only; the loss itself stays fp32.
+        #      Evaluation (keepdim=True / anomaly maps) always runs in fp32 so that scores are unaffected.
+        use_amp = getattr(self, 'train_amp', False) and not keepdim
+        with torch.autocast(device_type=x.device.type, dtype=torch.bfloat16, enabled=use_amp):
+            with torch.no_grad():
+                f_x = self.model(x, layers)      # target features: no graph needed
+            f_y = self.model(y, layers)
+        f_x = [f.float() for f in f_x]
+        f_y = [f.float() for f in f_y]
 
         loss = None
 
@@ -641,7 +648,7 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
                 
         else: # KL divergence loss from sparse autoencoder
             rho_hat = torch.mean(torch.clamp(net_out['unnoised_z'].to(torch.float32), +1e-3, 1.0-1e-3), dim=0) # average across minibatches
-            rho_ = torch.tensor([self.rho] * len(rho_hat)).to(rho_hat.device)
+            rho_ = torch.full_like(rho_hat, self.rho)   # v31: was a Python list of ~63k floats + H2D copy every step
             kl_d_losses = rho_ * torch.log(rho_/rho_hat) + (1 - rho_) * torch.log((1-rho_) / (1-rho_hat))
             kl_d_losses = torch.clamp(kl_d_losses, -1e+3, +1e+3) # to avoid overflow
             kl_d_loss = torch.sum(kl_d_losses)
