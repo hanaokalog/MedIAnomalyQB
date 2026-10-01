@@ -290,6 +290,7 @@ class BaseWorker:
                        "top_attn_depth": self.opt.model.get('top_attn_depth'),
                        "norm_type": self.opt.model.get('norm_type'),
                        "full_eval": self.opt.test.get('full_eval'),
+                       "ldp_samples": self.opt.test.get('ldp_samples'),
                        "test_batch_size": self._test_batch_size(),
                        "perceptual_bf16": self.opt.train.get('perceptual_bf16'),
 

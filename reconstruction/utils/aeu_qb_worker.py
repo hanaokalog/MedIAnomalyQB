@@ -290,6 +290,10 @@ class AEU_QBWorker(AEUWorker):
         test_score_maps_hv = []
         test_perceptual_losses_hv = []
         test_perceptual_losses_ldp = []
+        # v32: LDP readout averaged over K independent noise draws (K = --ldp_samples)
+        ldp_samples = int(self.opt.test.get('ldp_samples', 1))
+        test_perceptual_losses_ldp_avg = []
+        test_score_maps_ldp_avg = []
 
         test_repts = []
         test_repts_binary = []
@@ -355,6 +359,17 @@ class AEU_QBWorker(AEUWorker):
             test_perceptual_losses_ldp += lossset_ldp["perceptual_losses"].cpu().detach().numpy().tolist()
             test_imgs_hat_for_LDP.append(net_out_ldp['x_hat'].cpu())
 
+            if ldp_samples > 1:
+                acc_perc = lossset_ldp["perceptual_losses"].detach().view(-1).clone()
+                acc_map = lossset_ldp['anomaly_score_maps'].detach().clone()
+                for _ in range(ldp_samples - 1):
+                    net_out_k = self.net(img)                       # fresh Laplace noise in every QB layer
+                    lossset_k = self.criterion(img, net_out_k, all_scores=True, force_firing=False)
+                    acc_perc += lossset_k["perceptual_losses"].detach().view(-1)
+                    acc_map += lossset_k['anomaly_score_maps'].detach()
+                test_perceptual_losses_ldp_avg += (acc_perc / ldp_samples).cpu().numpy().tolist()
+                test_score_maps_ldp_avg.append((acc_map / ldp_samples).cpu())
+
             self.net.using_heaviside = False
             self.net.adding_noise_in_test = False
 
@@ -397,6 +412,10 @@ class AEU_QBWorker(AEUWorker):
                    'AP_l2': metrics.average_precision_score(test_labels, test_l2_scores),
                    'AUC_l2': metrics.roc_auc_score(test_labels, test_l2_scores)
         }
+        if ldp_samples > 1:
+            test_perceptual_losses_ldp_avg = np.array(test_perceptual_losses_ldp_avg)
+            results.update({'AUC_perceptual_ldp_avg': metrics.roc_auc_score(test_labels, test_perceptual_losses_ldp_avg),
+                            'AP_perceptual_ldp_avg': metrics.average_precision_score(test_labels, test_perceptual_losses_ldp_avg)})
         # pixel-level metrics
         if self.pixel_metric:
             test_masks = torch.cat(test_masks, dim=0).unsqueeze(1)  # NxHxW -> Nx1xHxW
@@ -414,6 +433,10 @@ class AEU_QBWorker(AEUWorker):
             pix_ap_hv = metrics.average_precision_score(masks_flat, test_score_maps_hv.cpu().numpy().reshape(-1))
             best_dice_hv, _ = compute_best_dice(test_score_maps_hv.cpu().numpy(), test_masks.numpy())
             results.update({'PixAP_heaviside': pix_ap_hv, 'BestDice_heaviside': best_dice_hv})
+            if ldp_samples > 1:
+                maps_ldp = np.clip(torch.cat(test_score_maps_ldp_avg, dim=0), -1.0e+3, +1.0e+3).cpu().numpy()
+                results.update({'PixAP_ldp_avg': metrics.average_precision_score(masks_flat, maps_ldp.reshape(-1)),
+                                'BestDice_ldp_avg': compute_best_dice(maps_ldp, test_masks.numpy())[0]})
         else:
             test_masks = None
 

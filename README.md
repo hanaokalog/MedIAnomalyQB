@@ -111,6 +111,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | `--perceptual_bf16` / `--no-perceptual_bf16` | on | run VGG19 in bf16 autocast during training (evaluation is fp32) |
 | `--test_batch_size` | 64 | evaluation batch size (results are batch-size independent) |
 | `--num_workers` | 4 | DataLoader workers (`0` if the cluster restricts shared memory) |
+| `--ldp_samples` | 8 | number of independent noise draws averaged for the LDP (noisy) test-time readout (v32) |
 | `--full_eval` | off | additionally run range coding, PNG residual coding, one-class / few-shot classifiers and t-SNE (slow) |
 
 ### Reported metrics
@@ -119,6 +120,7 @@ Each evaluation logs, among others (prefix `val/` in wandb):
 
 - `AUC_perceptual`: image-level AUROC from the perceptual term of the anomaly score (main metric).
 - `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: the same with Heaviside (≤ 1 bit/channel) or noisy (LDP) test-time QB.
+- `AUC_perceptual_ldp_avg`, `AP_perceptual_ldp_avg` (and `PixAP_ldp_avg`, `BestDice_ldp_avg` for BraTS): LDP readout with the anomaly score averaged over `--ldp_samples` noise draws (v32).
 - `AUC`, `AP`, `AUC_l2`, `AP_l2`: from the full anomaly map or from the L2 term only.
 - BraTS only: `PixAUC`, `PixAP`, `BestDice` (and `_l2`, `_heaviside` variants).
 - Heaviside information budget on the test set (v32): `real_firing_rate` (mean fraction of QB channels with σ(h) > ½),
