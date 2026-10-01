@@ -1,0 +1,443 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2650" viewBox="0 0 1600 2650" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs>
+<rect width="1600" height="2650" fill="white"/>
+<text x="20.0" y="26.6" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(a) Overall architecture  (wf = 4, depth = 5, 128 × 128 input, 6.65 M parameters)</text>
+<rect x="20.0" y="44.0" width="260.0" height="66.0" rx="7" fill="#ffffff" stroke="#333333" stroke-width="1.6"/>
+<text x="150.0" y="73.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">input x  (C_in × 128²)</text>
+<text x="150.0" y="90.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">x − 1  (+ blob noise, train)</text>
+<polyline points="150.0,110.0 150.0,148.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1014.0" y="44.0" width="566.0" height="66.0" rx="7" fill="#ffffff" stroke="#333333" stroke-width="1.6"/>
+<text x="1297.0" y="73.2" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">output head:  x̂ = head(·) + 1</text>
+<text x="1297.0" y="90.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">LReLU · Conv3×3 16→16 · LReLU · Conv3×3 16→C_in</text>
+<rect x="20.0" y="148.0" width="260.0" height="84.0" rx="7" fill="#dce8f7" stroke="#2b5c8f" stroke-width="1.6"/>
+<text x="150.0" y="175.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) C_in→16</text>
+<text x="150.0" y="194.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">128 × 128 · GN(4)</text>
+<text x="150.0" y="213.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1-conv shortcut</text>
+<polyline points="150.0,232.0 150.0,293.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="160.0" y="267.4" font-size="14" font-weight="normal" text-anchor="start" fill="#2b5c8f">ResidualDown (c) 16→16</text>
+<rect x="20.0" y="293.0" width="260.0" height="84.0" rx="7" fill="#dce8f7" stroke="#2b5c8f" stroke-width="1.6"/>
+<text x="150.0" y="320.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) 16→32</text>
+<text x="150.0" y="339.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">64 × 64 · GN(8)</text>
+<text x="150.0" y="358.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1-conv shortcut</text>
+<polyline points="150.0,377.0 150.0,438.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="160.0" y="412.4" font-size="14" font-weight="normal" text-anchor="start" fill="#2b5c8f">ResidualDown (c) 32→32</text>
+<rect x="20.0" y="438.0" width="260.0" height="84.0" rx="7" fill="#dce8f7" stroke="#2b5c8f" stroke-width="1.6"/>
+<text x="150.0" y="465.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) 32→64</text>
+<text x="150.0" y="484.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">32 × 32 · GN(8)</text>
+<text x="150.0" y="503.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1-conv shortcut</text>
+<polyline points="150.0,522.0 150.0,583.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="160.0" y="557.4" font-size="14" font-weight="normal" text-anchor="start" fill="#2b5c8f">ResidualDown (c) 64→64</text>
+<rect x="20.0" y="583.0" width="260.0" height="84.0" rx="7" fill="#dce8f7" stroke="#2b5c8f" stroke-width="1.6"/>
+<text x="150.0" y="610.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) 64→128</text>
+<text x="150.0" y="629.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">16 × 16 · GN(16)</text>
+<text x="150.0" y="648.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1-conv shortcut</text>
+<polyline points="150.0,667.0 150.0,728.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="160.0" y="702.4" font-size="14" font-weight="normal" text-anchor="start" fill="#2b5c8f">ResidualDown (c) 128→128</text>
+<rect x="20.0" y="728.0" width="260.0" height="84.0" rx="7" fill="#dce8f7" stroke="#2b5c8f" stroke-width="1.6"/>
+<text x="150.0" y="755.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) 128→256</text>
+<text x="150.0" y="774.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">8 × 8 · GN(16)</text>
+<text x="150.0" y="793.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1-conv shortcut</text>
+<polyline points="280.0,190.0 318.0,190.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="318.0" y="164.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="366.0" y="185.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="366.0" y="203.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">16→1</text>
+<polyline points="414.0,190.0 452.0,190.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="452.0" y="160.0" width="390.0" height="60.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="647.0" y="185.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">QB (b)  1×128×128 = 16,384</text>
+<text x="647.0" y="204.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">flatten → QB → reshape</text>
+<polyline points="842.0,190.0 880.0,190.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="880.0" y="164.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="928.0" y="185.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="928.0" y="203.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1→16</text>
+<polyline points="976.0,190.0 1014.0,190.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="995.0" y="181.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">ŝ</text>
+<rect x="1014.0" y="138.0" width="566.0" height="104.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="1297.0" y="163.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Up block (f) · 16 ch · 128 × 128</text>
+<text x="1297.0" y="184.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ResidualUp (d) 32→16 · CBAM gate (g), F_int = 8</text>
+<text x="1297.0" y="205.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">concat → ConvBlock (e) 32→16, GN(4)</text>
+<text x="1297.0" y="226.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">attention: none</text>
+<polyline points="1297.0,283.0 1297.0,242.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="280.0,335.0 318.0,335.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="318.0" y="309.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="366.0" y="330.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="366.0" y="348.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">32→2</text>
+<polyline points="414.0,335.0 452.0,335.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="452.0" y="305.0" width="390.0" height="60.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="647.0" y="330.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">QB (b)  2×64×64 = 8,192</text>
+<text x="647.0" y="349.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">flatten → QB → reshape</text>
+<polyline points="842.0,335.0 880.0,335.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="880.0" y="309.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="928.0" y="330.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="928.0" y="348.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">2→32</text>
+<polyline points="976.0,335.0 1014.0,335.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="995.0" y="326.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">ŝ</text>
+<rect x="1014.0" y="283.0" width="566.0" height="104.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="1297.0" y="308.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Up block (f) · 32 ch · 64 × 64</text>
+<text x="1297.0" y="329.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ResidualUp (d) 64→32 · CBAM gate (g), F_int = 16</text>
+<text x="1297.0" y="350.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">concat → ConvBlock (e) 64→32, GN(8)</text>
+<text x="1297.0" y="371.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">attention: ChannelAttn + FFN (h)</text>
+<polyline points="1297.0,428.0 1297.0,387.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="280.0,480.0 318.0,480.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="318.0" y="454.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="366.0" y="475.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="366.0" y="493.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">64→4</text>
+<polyline points="414.0,480.0 452.0,480.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="452.0" y="450.0" width="390.0" height="60.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="647.0" y="475.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">QB (b)  4×32×32 = 4,096</text>
+<text x="647.0" y="494.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">flatten → QB → reshape</text>
+<polyline points="842.0,480.0 880.0,480.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="880.0" y="454.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="928.0" y="475.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="928.0" y="493.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">4→64</text>
+<polyline points="976.0,480.0 1014.0,480.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="995.0" y="471.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">ŝ</text>
+<rect x="1014.0" y="428.0" width="566.0" height="104.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="1297.0" y="453.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Up block (f) · 64 ch · 32 × 32</text>
+<text x="1297.0" y="474.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ResidualUp (d) 128→64 · CBAM gate (g), F_int = 32</text>
+<text x="1297.0" y="495.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">concat → ConvBlock (e) 128→64, GN(8)</text>
+<text x="1297.0" y="516.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">attention: SpatialAttn + FFN (h)</text>
+<polyline points="1297.0,573.0 1297.0,532.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="280.0,625.0 318.0,625.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="318.0" y="599.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="366.0" y="620.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="366.0" y="638.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">128→8</text>
+<polyline points="414.0,625.0 452.0,625.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="452.0" y="595.0" width="390.0" height="60.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="647.0" y="620.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">QB (b)  8×16×16 = 2,048</text>
+<text x="647.0" y="639.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">flatten → QB → reshape</text>
+<polyline points="842.0,625.0 880.0,625.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="880.0" y="599.0" width="96.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="928.0" y="620.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="928.0" y="638.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">8→128</text>
+<polyline points="976.0,625.0 1014.0,625.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="995.0" y="616.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">ŝ</text>
+<rect x="1014.0" y="573.0" width="566.0" height="104.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="1297.0" y="598.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Up block (f) · 128 ch · 16 × 16</text>
+<text x="1297.0" y="619.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ResidualUp (d) 256→128 · CBAM gate (g), F_int = 64</text>
+<text x="1297.0" y="640.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">concat → ConvBlock (e) 256→128, GN(16)</text>
+<text x="1297.0" y="661.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">attention: SpatialAttn + FFN (h)</text>
+<polyline points="1297.0,138.0 1297.0,110.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="150.0,812.0 150.0,852.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="20.0" y="852.0" width="390.0" height="104.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="215.0" y="886.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Top mixer, encoder side (i)</text>
+<text x="215.0" y="908.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(SpatialAttn + FFN)(256) × 2</text>
+<text x="215.0" y="930.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv 256→512 · GN(32) · ParamAtan</text>
+<polyline points="410.0,904.0 482.0,904.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="482.0" y="870.0" width="330.0" height="68.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="647.0" y="909.6" font-size="16" font-weight="bold" text-anchor="middle" fill="#1a1a1a">QB (b)  512×8×8 = 32,768</text>
+<polyline points="812.0,904.0 1014.0,904.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1014.0" y="852.0" width="566.0" height="104.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1297.0" y="886.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Top mixer, decoder side (i)</text>
+<text x="1297.0" y="908.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv 512→256</text>
+<text x="1297.0" y="930.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(SpatialAttn + FFN)(256) × 2</text>
+<polyline points="1297.0,852.0 1297.0,677.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="1307.0" y="769.4" font-size="14" font-weight="normal" text-anchor="start" fill="#2f7a3a">256 × 8 × 8</text>
+<text x="687.0" y="762.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#444">decoder receives only QB outputs:</text>
+<text x="687.0" y="786.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#444">16,384 + 8,192 + 4,096 + 2,048 + 32,768 = 63,488 channels</text>
+<rect x="20.0" y="990.0" width="513.0" height="290.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="34.0" y="1020.6" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(b) QB layer</text>
+<text x="519.0" y="1018.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">N channels, per sample</text>
+<rect x="543.0" y="990.0" width="513.0" height="290.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="557.0" y="1020.6" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(c) ResidualDown</text>
+<text x="1042.0" y="1018.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">C×H×W → C×H/2×W/2</text>
+<rect x="1067.0" y="990.0" width="513.0" height="290.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="1081.0" y="1020.6" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(d) ResidualUp</text>
+<text x="1566.0" y="1018.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">C×H×W → C′×2H×2W</text>
+<text x="96.0" y="1096.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">h</text>
+<polyline points="110.0,1090.0 142.0,1090.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="142.0" y="1068.0" width="62.0" height="44.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="173.0" y="1096.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a">σ(·)</text>
+<polyline points="204.0,1090.0 270.0,1090.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="237.0" y="1079.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">z</text>
+<circle cx="284.0" cy="1090.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="276.0" y1="1090.0" x2="292.0" y2="1090.0" stroke="#444" stroke-width="1.8"/>
+<line x1="284.0" y1="1082.0" x2="284.0" y2="1098.0" stroke="#444" stroke-width="1.8"/>
+<text x="284.0" y="1042.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">n ~ Lap(0, 1/ε)</text>
+<polyline points="284.0,1050.0 284.0,1076.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="298.0,1090.0 370.0,1090.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="370.0" y="1068.0" width="72.0" height="44.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="406.0" y="1094.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1[·&gt;½]</text>
+<text x="406.0" y="1132.5" font-size="13" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">test option</text>
+<polyline points="442.0,1090.0 474.0,1090.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="488.0" y="1096.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">z̃</text>
+<text x="38.0" y="1176.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  z̃ = σ(h) + n   (noise on)</text>
+<text x="38.0" y="1198.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:   z̃ = σ(h)  |  1[σ(h) &gt; ½]  |  σ(h) + n (LDP)</text>
+<text x="38.0" y="1220.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per channel (sensitivity Δ = 1);</text>
+<text x="38.0" y="1242.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">Heaviside at test: ≤ 1 bit / channel;  ε = 0: bypass</text>
+<text x="636.0" y="1131.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
+<polyline points="648.0,1125.0 660.0,1125.0 660.0,1085.0 674.0,1085.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="660.0,1125.0 660.0,1165.0 674.0,1165.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="674.0" y="1058.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="733.0" y="1080.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Conv 3×3</text>
+<text x="733.0" y="1098.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">C → C/4</text>
+<polyline points="792.0,1085.0 808.0,1085.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="808.0" y="1058.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="867.0" y="1080.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Pixel-</text>
+<text x="867.0" y="1098.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Unshuffle(2)</text>
+<rect x="674.0" y="1138.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="733.0" y="1160.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Pixel-</text>
+<text x="733.0" y="1178.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Unshuffle(2)</text>
+<polyline points="792.0,1165.0 808.0,1165.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="808.0" y="1138.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="867.0" y="1160.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">mean over</text>
+<text x="867.0" y="1178.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">4-ch groups</text>
+<polyline points="926.0,1085.0 958.0,1085.0 958.0,1112.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="926.0,1165.0 958.0,1165.0 958.0,1138.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="958.0" cy="1125.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="950.0" y1="1125.0" x2="966.0" y2="1125.0" stroke="#444" stroke-width="1.8"/>
+<line x1="958.0" y1="1117.0" x2="958.0" y2="1133.0" stroke="#444" stroke-width="1.8"/>
+<text x="802.0" y="1047.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">learned path</text>
+<text x="802.0" y="1213.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">parameter-free shortcut</text>
+<text x="799.5" y="1260.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#333">sum → C × H/2 × W/2   (no norm / activation)</text>
+<text x="1160.0" y="1131.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
+<polyline points="1172.0,1125.0 1184.0,1125.0 1184.0,1085.0 1198.0,1085.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="1184.0,1125.0 1184.0,1165.0 1198.0,1165.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1198.0" y="1058.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1257.0" y="1080.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Conv 3×3</text>
+<text x="1257.0" y="1098.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">C → 4C′</text>
+<polyline points="1316.0,1085.0 1332.0,1085.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1332.0" y="1058.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1391.0" y="1080.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Pixel-</text>
+<text x="1391.0" y="1098.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Shuffle(2)</text>
+<rect x="1198.0" y="1138.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1257.0" y="1160.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">repeat ch</text>
+<text x="1257.0" y="1178.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">× 4C′/C</text>
+<polyline points="1316.0,1165.0 1332.0,1165.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1332.0" y="1138.0" width="118.0" height="54.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1391.0" y="1160.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Pixel-</text>
+<text x="1391.0" y="1178.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Shuffle(2)</text>
+<polyline points="1450.0,1085.0 1482.0,1085.0 1482.0,1112.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="1450.0,1165.0 1482.0,1165.0 1482.0,1138.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="1482.0" cy="1125.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="1474.0" y1="1125.0" x2="1490.0" y2="1125.0" stroke="#444" stroke-width="1.8"/>
+<line x1="1482.0" y1="1117.0" x2="1482.0" y2="1133.0" stroke="#444" stroke-width="1.8"/>
+<text x="1326.0" y="1047.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">learned path</text>
+<text x="1326.0" y="1213.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">parameter-free shortcut</text>
+<text x="1323.5" y="1260.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#333">sum → C′ × 2H × 2W   (here C = 2C′: repeat × 2)</text>
+<rect x="20.0" y="1300.0" width="400.0" height="660.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="34.0" y="1330.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(e) ConvBlock</text>
+<text x="406.0" y="1328.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">C_in → C</text>
+<rect x="440.0" y="1300.0" width="500.0" height="660.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="454.0" y="1330.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(f) Up block</text>
+<text x="926.0" y="1328.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">2C×H×W, ŝ → C×2H×2W</text>
+<rect x="960.0" y="1300.0" width="620.0" height="660.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="974.0" y="1330.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(g) CBAM cross-attention gate</text>
+<text x="1566.0" y="1328.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">F_int = C/2</text>
+<text x="190.0" y="1366.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x  (C_in × H × W)</text>
+<polyline points="190.0,1374.0 190.0,1398.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1398.0" width="230.0" height="50.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="190.0" y="1419.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">WS-Conv 3×3, C_in → C</text>
+<text x="190.0" y="1436.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(reflection pad 1)</text>
+<polyline points="190.0,1448.0 190.0,1464.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1464.0" width="230.0" height="34.0" rx="7" fill="#ffffff" stroke="#888888" stroke-width="1.6"/>
+<text x="190.0" y="1485.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Swish</text>
+<polyline points="190.0,1498.0 190.0,1514.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1514.0" width="230.0" height="34.0" rx="7" fill="#fff7d6" stroke="#a08a2a" stroke-width="1.6"/>
+<text x="190.0" y="1535.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm(g(C), C)</text>
+<polyline points="190.0,1548.0 190.0,1564.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1564.0" width="230.0" height="50.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="190.0" y="1585.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">WS-Conv 3×3, C → C</text>
+<text x="190.0" y="1602.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(reflection pad 1)</text>
+<polyline points="190.0,1614.0 190.0,1630.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1630.0" width="230.0" height="34.0" rx="7" fill="#ffffff" stroke="#888888" stroke-width="1.6"/>
+<text x="190.0" y="1651.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Swish</text>
+<polyline points="190.0,1664.0 190.0,1680.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="75.0" y="1680.0" width="230.0" height="34.0" rx="7" fill="#fff7d6" stroke="#a08a2a" stroke-width="1.6"/>
+<text x="190.0" y="1701.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm(g(C), C)</text>
+<polyline points="190.0,1714.0 190.0,1731.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="190.0,1386.0 360.0,1386.0 360.0,1684.0" fill="none" stroke="#444" stroke-width="1.8"/>
+<rect x="316.0" y="1531.0" width="88.0" height="68.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="360.0" y="1552.5" font-size="13" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv</text>
+<text x="360.0" y="1569.5" font-size="13" font-weight="normal" text-anchor="middle" fill="#1a1a1a">if C_in ≠ C</text>
+<text x="360.0" y="1586.5" font-size="13" font-weight="normal" text-anchor="middle" fill="#1a1a1a">else id</text>
+<polyline points="360.0,1599.0 360.0,1744.0 203.0,1744.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="190.0" cy="1744.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="182.0" y1="1744.0" x2="198.0" y2="1744.0" stroke="#444" stroke-width="1.8"/>
+<line x1="190.0" y1="1736.0" x2="190.0" y2="1752.0" stroke="#444" stroke-width="1.8"/>
+<polyline points="190.0,1757.0 190.0,1784.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="190.0" y="1800.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">C × H × W</text>
+<text x="36.0" y="1895.5" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">WS = weight-standardised conv;  g(C): 16→4, 32→8,</text>
+<text x="36.0" y="1914.5" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">64→8, 128→16, 256→16;  shortcut on by default</text>
+<text x="36.0" y="1933.5" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">(--no-using_identity_connection removes it)</text>
+<text x="570.0" y="1355.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">x from deeper stage</text>
+<text x="570.0" y="1373.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">2C × H × W</text>
+<text x="810.0" y="1355.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ŝ from QB path</text>
+<text x="810.0" y="1373.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">C × 2H × 2W</text>
+<polyline points="570.0,1380.0 570.0,1404.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="470.0" y="1404.0" width="200.0" height="50.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="570.0" y="1424.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ResidualUp (d)</text>
+<text x="570.0" y="1442.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">2C → C</text>
+<polyline points="570.0,1454.0 570.0,1496.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="580.0" y="1481.6" font-size="16" font-weight="normal" text-anchor="start" fill="#1a1a1a" font-style="italic">u</text>
+<polyline points="810.0,1380.0 810.0,1496.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="470.0" y="1496.0" width="440.0" height="50.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="690.0" y="1516.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">CBAM cross-attention gate (g)</text>
+<text x="690.0" y="1534.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">→ a ∈ [0,1]^(1×2H×2W)</text>
+<polyline points="570.0,1546.0 570.0,1568.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="810.0,1546.0 810.0,1568.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="570.0" y="1591.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a">u ⊙ (1 − a)</text>
+<text x="810.0" y="1591.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ŝ ⊙ a</text>
+<polyline points="570.0,1602.0 570.0,1630.0 630.0,1630.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="810.0,1602.0 810.0,1630.0 750.0,1630.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="630.0" y="1610.0" width="120.0" height="40.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="690.0" y="1634.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">concat → 2C</text>
+<rect x="500.0" y="1676.0" width="380.0" height="52.0" rx="7" fill="#dff0dc" stroke="#2f7a3a" stroke-width="1.6"/>
+<text x="690.0" y="1698.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ConvBlock (e) 2C → C</text>
+<text x="690.0" y="1715.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">with 1×1-conv shortcut</text>
+<polyline points="690.0,1728.0 690.0,1750.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="500.0" y="1750.0" width="380.0" height="70.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="690.0" y="1772.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">stage attention (h)</text>
+<text x="690.0" y="1789.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">128²: none · 64²: ChannelAttn + FFN</text>
+<text x="690.0" y="1807.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">32², 16²: SpatialAttn + FFN</text>
+<polyline points="690.0,1650.0 690.0,1676.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="690.0,1820.0 690.0,1850.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="690.0" y="1868.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">C × 2H × 2W</text>
+<text x="456.0" y="1921.0" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">skips are only gated, never bypass the QB;</text>
+<text x="456.0" y="1940.0" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">attention blocks use gradient checkpointing</text>
+<text x="1110.0" y="1362.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">g = u  (C × 2H × 2W)</text>
+<text x="1430.0" y="1362.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x = ŝ  (C × 2H × 2W)</text>
+<polyline points="1110.0,1370.0 1110.0,1390.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="1430.0,1370.0 1430.0,1390.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1010.0" y="1390.0" width="200.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1110.0" y="1408.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C→F_int</text>
+<text x="1110.0" y="1426.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm</text>
+<rect x="1330.0" y="1390.0" width="200.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1430.0" y="1408.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C→F_int</text>
+<text x="1430.0" y="1426.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm</text>
+<polyline points="1110.0,1436.0 1110.0,1468.0 1257.0,1468.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="1430.0,1436.0 1430.0,1468.0 1283.0,1468.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="1270.0" cy="1468.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="1262.0" y1="1468.0" x2="1278.0" y2="1468.0" stroke="#444" stroke-width="1.8"/>
+<line x1="1270.0" y1="1460.0" x2="1270.0" y2="1476.0" stroke="#444" stroke-width="1.8"/>
+<rect x="1060.0" y="1504.0" width="420.0" height="36.0" rx="7" fill="#ffffff" stroke="#888888" stroke-width="1.6"/>
+<text x="1270.0" y="1526.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ReLU  →  m  (F_int × 2H × 2W)</text>
+<polyline points="1270.0,1540.0 1270.0,1562.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1060.0" y="1562.0" width="420.0" height="92.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="1270.0" y="1584.4" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">channel attention</text>
+<text x="1270.0" y="1603.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">avg-pool, max-pool over H, W</text>
+<text x="1270.0" y="1622.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">shared MLP  F_int → 4 → F_int  (ReLU)</text>
+<text x="1270.0" y="1641.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">sum → sigmoid → m ⊙ w_c</text>
+<polyline points="1270.0,1654.0 1270.0,1676.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1060.0" y="1676.0" width="420.0" height="74.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="1270.0" y="1698.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">spatial attention</text>
+<text x="1270.0" y="1717.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">[mean_c, max_c] → Conv 7×7, 2 → 1</text>
+<text x="1270.0" y="1736.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">sigmoid → m ⊙ w_s</text>
+<polyline points="1270.0,1750.0 1270.0,1772.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1060.0" y="1772.0" width="420.0" height="52.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1270.0" y="1793.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">Conv 1×1 F_int → 1 · GroupNorm(1, 1) · sigmoid</text>
+<text x="1270.0" y="1812.4" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">→ a  (1 × 2H × 2W)</text>
+<polyline points="1270.0,1481.0 1270.0,1504.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="1270.0,1824.0 1270.0,1852.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="1270.0" y="1871.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a">outputs:  ŝ ⊙ a  and  u ⊙ (1 − a)</text>
+<text x="976.0" y="1921.0" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">MLP hidden width max(4, F_int/16) = 4 at all stages</text>
+<text x="976.0" y="1940.0" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">(F_int = 8, 16, 32, 64 for the 128², 64², 32², 16² stages)</text>
+<rect x="20.0" y="1980.0" width="960.0" height="510.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="34.0" y="2010.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(h) Attention and FFN blocks</text>
+<text x="966.0" y="2008.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">all pre-norm residual, output proj. zero-initialised</text>
+<rect x="1000.0" y="1980.0" width="580.0" height="510.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="1014.0" y="2010.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(i) Top mixer around the bottom QB</text>
+<text x="1566.0" y="2008.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">8 × 8 tokens</text>
+<text x="185.0" y="2050.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">SpatialAttn(C), 8 heads</text>
+<text x="185.0" y="2081.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
+<polyline points="185.0,2086.0 185.0,2110.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="60.0" y="2110.0" width="250.0" height="34.0" rx="7" fill="#fff7d6" stroke="#a08a2a" stroke-width="1.6"/>
+<text x="185.0" y="2131.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm(C/4, C)</text>
+<polyline points="185.0,2144.0 185.0,2164.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="60.0" y="2164.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="185.0" y="2183.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C → 3C</text>
+<text x="185.0" y="2200.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">q, k, v</text>
+<polyline points="185.0,2210.0 185.0,2230.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="60.0" y="2230.0" width="250.0" height="50.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="185.0" y="2251.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">softmax attention over</text>
+<text x="185.0" y="2268.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">H·W tokens (per head)</text>
+<polyline points="185.0,2280.0 185.0,2300.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="60.0" y="2300.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="185.0" y="2319.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C → C</text>
+<text x="185.0" y="2336.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(zero-init)</text>
+<polyline points="185.0,2346.0 185.0,2367.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="185.0,2098.0 325.0,2098.0 325.0,2380.0" fill="none" stroke="#444" stroke-width="1.8"/>
+<polyline points="325.0,2380.0 198.0,2380.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="185.0" cy="2380.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="177.0" y1="2380.0" x2="193.0" y2="2380.0" stroke="#444" stroke-width="1.8"/>
+<line x1="185.0" y1="2372.0" x2="185.0" y2="2388.0" stroke="#444" stroke-width="1.8"/>
+<polyline points="185.0,2393.0 185.0,2420.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="500.0" y="2050.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">ChannelAttn(C), 4 heads</text>
+<text x="500.0" y="2081.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
+<polyline points="500.0,2086.0 500.0,2110.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="375.0" y="2110.0" width="250.0" height="34.0" rx="7" fill="#fff7d6" stroke="#a08a2a" stroke-width="1.6"/>
+<text x="500.0" y="2131.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm(C/4, C)</text>
+<polyline points="500.0,2144.0 500.0,2164.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="375.0" y="2164.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="500.0" y="2183.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C → 3C</text>
+<text x="500.0" y="2200.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">depthwise 3×3 → q, k, v</text>
+<polyline points="500.0,2210.0 500.0,2230.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="375.0" y="2230.0" width="250.0" height="50.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="500.0" y="2251.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">L2-norm q, k;  softmax(τ q kᵀ) v</text>
+<text x="500.0" y="2268.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(C/h × C/h affinity)</text>
+<polyline points="500.0,2280.0 500.0,2300.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="375.0" y="2300.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="500.0" y="2319.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C → C</text>
+<text x="500.0" y="2336.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(zero-init)</text>
+<polyline points="500.0,2346.0 500.0,2367.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="500.0,2098.0 640.0,2098.0 640.0,2380.0" fill="none" stroke="#444" stroke-width="1.8"/>
+<polyline points="640.0,2380.0 513.0,2380.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="500.0" cy="2380.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="492.0" y1="2380.0" x2="508.0" y2="2380.0" stroke="#444" stroke-width="1.8"/>
+<line x1="500.0" y1="2372.0" x2="500.0" y2="2388.0" stroke="#444" stroke-width="1.8"/>
+<polyline points="500.0,2393.0 500.0,2420.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="815.0" y="2050.9" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">FFN(C)</text>
+<text x="815.0" y="2081.6" font-size="16" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
+<polyline points="815.0,2086.0 815.0,2110.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="690.0" y="2110.0" width="250.0" height="34.0" rx="7" fill="#fff7d6" stroke="#a08a2a" stroke-width="1.6"/>
+<text x="815.0" y="2131.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GroupNorm(C/4, C)</text>
+<polyline points="815.0,2144.0 815.0,2164.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="690.0" y="2164.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="815.0" y="2183.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv C → 4C</text>
+<text x="815.0" y="2200.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">GLU → 2C</text>
+<polyline points="815.0,2210.0 815.0,2230.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="690.0" y="2230.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="815.0" y="2249.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">depthwise 3×3 (2C)</text>
+<text x="815.0" y="2266.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">SiLU</text>
+<polyline points="815.0,2276.0 815.0,2296.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="690.0" y="2296.0" width="250.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="815.0" y="2315.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv 2C → C</text>
+<text x="815.0" y="2332.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(zero-init)</text>
+<polyline points="815.0,2342.0 815.0,2363.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="815.0,2098.0 955.0,2098.0 955.0,2376.0" fill="none" stroke="#444" stroke-width="1.8"/>
+<polyline points="955.0,2376.0 828.0,2376.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<circle cx="815.0" cy="2376.0" r="13" fill="white" stroke="#444" stroke-width="1.8"/>
+<line x1="807.0" y1="2376.0" x2="823.0" y2="2376.0" stroke="#444" stroke-width="1.8"/>
+<line x1="815.0" y1="2368.0" x2="815.0" y2="2384.0" stroke="#444" stroke-width="1.8"/>
+<polyline points="815.0,2389.0 815.0,2416.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="36.0" y="2438.6" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">Used as (Attn + FFN) pairs:  decoder 16², 32² stages → SpatialAttn + FFN;  64² → ChannelAttn + FFN;  128² → none.</text>
+<text x="36.0" y="2458.6" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">SpatialAttn uses scaled-dot-product attention; ChannelAttn (Restormer-style) has a learnable temperature τ per head.</text>
+<text x="1290.0" y="2042.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">encoder output  256 × 8 × 8</text>
+<polyline points="1290.0,2050.0 1290.0,2070.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2070.0" width="470.0" height="34.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="1290.0" y="2091.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(SpatialAttn + FFN)(256) × 2  (h)</text>
+<polyline points="1290.0,2104.0 1290.0,2122.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2122.0" width="470.0" height="34.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1290.0" y="2143.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv 256 → 512 · GroupNorm(32, 512)</text>
+<polyline points="1290.0,2156.0 1290.0,2174.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2174.0" width="470.0" height="46.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1290.0" y="2193.2" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">ParamAtan:  α·atan(β h + γ) + δ</text>
+<text x="1290.0" y="2210.7" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(learnable; β₀ = 0.01)</text>
+<polyline points="1290.0,2220.0 1290.0,2238.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2238.0" width="470.0" height="34.0" rx="7" fill="#fde3c9" stroke="#c0561a" stroke-width="1.6"/>
+<text x="1290.0" y="2259.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">flatten → QB (b), N = 32,768 → reshape 512 × 8 × 8</text>
+<polyline points="1290.0,2272.0 1290.0,2290.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2290.0" width="470.0" height="34.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
+<text x="1290.0" y="2311.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1×1 conv 512 → 256</text>
+<polyline points="1290.0,2324.0 1290.0,2342.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="1055.0" y="2342.0" width="470.0" height="34.0" rx="7" fill="#ece1f6" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="1290.0" y="2363.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">(SpatialAttn + FFN)(256) × 2  (h)</text>
+<polyline points="1290.0,2376.0 1290.0,2402.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="1290.0" y="2420.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">→ first Up block (16²)</text>
+<text x="1016.0" y="2447.1" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">replaces the v30 dense FC bottleneck (≈ 134 M params);</text>
+<text x="1016.0" y="2466.1" font-size="13" font-weight="normal" text-anchor="start" fill="#1a1a1a">ParamAtan keeps σ(·) in the QB away from saturation at init</text>
+<rect x="20.0" y="2510.0" width="1560.0" height="130.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
+<text x="34.0" y="2540.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(j) Training objective and anomaly score</text>
+<text x="36.0" y="2568.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  input x + blob noise (GPU, FFT-blurred random fields);  all QB layers add Laplace noise;  L = mean (x − x̂)²  +  λ_p · L_perc(x, x̂)  [ + optional KL sparsity on σ(h) ]</text>
+<text x="36.0" y="2592.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">L_perc: relative L1 between VGG19 relu4_2 features (ImageNet weights), random shift ≤ 8 px in training;  variance head unused (--not_use_log_var)</text>
+<text x="36.0" y="2616.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:  QB noise off (identity), Heaviside or LDP mode;  anomaly map = (x − x̂)² + λ_p · upsampled VGG map;  image score = perceptual term (AUC_perceptual)</text>
+</svg>
