@@ -571,6 +571,8 @@ class AEU_QBWorker(AEUWorker):
 
         for epoch in range(1, num_epochs + 1):
 
+            # warm-up of the firing-rate penalty; only used by the non-KL branch of AEU_Perceptual_QBLoss
+            # (the KL sparsity penalty ignores it and is active from epoch 1, see utils/losses.py)
             firing_cost_multiplier = 0.0 if epoch<100.0 else 1.0 # np.minimum(epoch/100, 1.0)
             shortcut_multiplier = 1.0 # 0.0 if epoch<100.0 else 1.0
 

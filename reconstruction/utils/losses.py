@@ -653,6 +653,9 @@ class AEU_Perceptual_QBLoss(AEU_QBLoss):
             kl_d_losses = torch.clamp(kl_d_losses, -1e+3, +1e+3) # to avoid overflow
             kl_d_loss = torch.sum(kl_d_losses)
             kl_d_loss = torch.nan_to_num(kl_d_loss)
+            # NOTE (v32): the KL branch intentionally uses self.firing_rate_cost_weight, i.e. the warm-up factor
+            # `firing_cost_multiplier` (0 before epoch 100 in run_train) is NOT applied here: the KL sparsity
+            # penalty is active from the first epoch. All v31/v32 results with --use_KL_divergence rely on this.
             firing_loss = kl_d_loss * self.firing_rate_cost_weight
 
         loss += firing_loss #.expand_as(loss)
