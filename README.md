@@ -121,6 +121,10 @@ Each evaluation logs, among others (prefix `val/` in wandb):
 - `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: the same with Heaviside (≤ 1 bit/channel) or noisy (LDP) test-time QB.
 - `AUC`, `AP`, `AUC_l2`, `AP_l2`: from the full anomaly map or from the L2 term only.
 - BraTS only: `PixAUC`, `PixAP`, `BestDice` (and `_l2`, `_heaviside` variants).
+- Heaviside information budget on the test set (v32): `real_firing_rate` (mean fraction of QB channels with σ(h) > ½),
+  `heaviside_budget_bits` = Σ_i h₂(p_i) and `heaviside_budget_bits_jensen` = N·h₂(p̄), upper bounds in bits on the
+  information carried by the Heaviside readout (p_i: firing frequency of channel i over the test images);
+  `dead_channel_fraction`; and the same with prefix `normal_` computed on normal test images only.
 
 Notes on the protocol:
 

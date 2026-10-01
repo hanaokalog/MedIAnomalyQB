@@ -85,6 +85,28 @@ class AEU_QBWorker(AEUWorker):
         # v31: GPU blob-noise generator (seeded in train_epoch from self.seed)
         self.noise_gen = None
 
+    @staticmethod
+    def heaviside_budget(fire_count, n, prefix=""):
+        """Upper bounds (bits) on the information carried by the Heaviside readout, from firing frequencies."""
+        if fire_count is None or n == 0:
+            return {}
+        p = (fire_count / n).clamp(0.0, 1.0)
+
+        def h2(q):
+            q = q.clamp(1e-12, 1 - 1e-12)
+            return -(q * torch.log2(q) + (1 - q) * torch.log2(1 - q))
+
+        n_ch = p.numel()
+        p_bar = p.mean()
+        sum_h2 = float(h2(p).sum())
+        return {
+            f"{prefix}real_firing_rate": float(p_bar),                         # mean Heaviside firing rate p_bar
+            f"{prefix}heaviside_budget_bits": sum_h2,                          # sum_i h2(p_i)  (tighter)
+            f"{prefix}heaviside_budget_bits_jensen": float(n_ch * h2(p_bar)),  # N h2(p_bar)
+            f"{prefix}heaviside_budget_per_channel": sum_h2 / n_ch,
+            f"{prefix}dead_channel_fraction": float(((p == 0) | (p == 1)).double().mean()),  # constant channels carry 0 bits
+        }
+
     def _test_batch_size(self):
         return self.opt.test.get('batch_size', 1)
 
@@ -254,6 +276,8 @@ class AEU_QBWorker(AEUWorker):
         test_imgs, test_imgs_hat, test_score_maps, test_names, test_labels, test_masks = [], [], [], [], [], []
         test_firing_rates = []
         test_real_firing_rates = []
+        # v32: per-channel Heaviside firing counts (sigma(h) > 1/2, i.e. before noise) for the information budget
+        fire_count_all, fire_count_normal, n_all, n_normal = None, None, 0, 0
         test_recon_losses = []
         test_perceptual_losses = []
         test_imgs_hat_for_compression = []
@@ -283,6 +307,16 @@ class AEU_QBWorker(AEUWorker):
 
             test_firing_rates += net_out['firing_rate'].cpu().detach().numpy().tolist()
             test_real_firing_rates += net_out['real_firing_rate'].cpu().detach().numpy().tolist()
+
+            fired = (net_out['unnoised_z'].detach() > 0.5).to(torch.float64)           # B x N
+            is_normal = (label.view(-1) == 0).to(fired.device)
+            if fire_count_all is None:
+                fire_count_all = torch.zeros(fired.shape[1], dtype=torch.float64, device=fired.device)
+                fire_count_normal = torch.zeros_like(fire_count_all)
+            fire_count_all += fired.sum(dim=0)
+            fire_count_normal += fired[is_normal].sum(dim=0)
+            n_all += fired.shape[0]
+            n_normal += int(is_normal.sum())
 
             lossset = self.criterion(img, net_out, all_scores=True, force_firing=False)
             test_score_maps.append(lossset['anomaly_score_maps'].cpu().detach())  # Nx1xHxW
@@ -384,6 +418,11 @@ class AEU_QBWorker(AEUWorker):
             test_masks = None
 
         # others
+        # v32: Heaviside information budget on the test set (Appendix A): I(X; X_hat) <= H(Z) <= sum_i h2(p_i) <= N h2(p_bar)
+        results.update(self.heaviside_budget(fire_count_all, n_all, prefix=""))
+        if n_normal > 0:
+            results.update(self.heaviside_budget(fire_count_normal, n_normal, prefix="normal_"))
+
         results.update({"normal_score": np.mean(test_scores[np.where(test_labels == 0)]),
                         "abnormal_score": np.mean(test_scores[np.where(test_labels == 1)])})
 
