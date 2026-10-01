@@ -85,6 +85,8 @@ class Options:
         parser.add_argument('--num_workers', type=int, default=4, help='DataLoader workers (0 = load in the main process)')
         parser.add_argument('--perceptual_bf16', action=argparse.BooleanOptionalAction, default=True,
                             help='run the VGG19 perceptual loss in bf16 autocast during training (evaluation stays fp32)')
+        parser.add_argument('--grad_clip', type=float, default=1.0,
+                            help='clip the global gradient norm to this value (0 = no clipping; the norm is logged either way)')
         parser.add_argument('--ldp_samples', type=int, default=8,
                             help='number of independent noise draws averaged for the LDP (noisy) readout at test time (1 = single draw only)')
         parser.add_argument('--full_eval', action='store_true',
@@ -142,6 +144,7 @@ class Options:
         self.test['save_flag'] = args.test_save_flag
         self.test['full_eval'] = args.full_eval
         self.test['ldp_samples'] = args.ldp_samples
+        self.train['grad_clip'] = args.grad_clip
         self.test['batch_size'] = args.test_batch_size
         self.train['num_workers'] = args.num_workers
         self.train['perceptual_bf16'] = args.perceptual_bf16

@@ -113,6 +113,10 @@ class AEU_QBWorker(AEUWorker):
     def train_epoch(self, force_firing=False, firing_cost_multiplier=1.0, shortcut_multiplier=1.0, noise_level = 0.0, epoch=0):
         self.net.train()
         losses = AverageMeter()
+        # v32: gradient-norm clipping and monitoring (--grad_clip; 0 disables clipping but still logs the norm)
+        grad_clip = float(self.opt.train.get('grad_clip', 0.0))
+        grad_norm_sum, grad_norm_max, n_clipped, n_steps = 0.0, 0.0, 0, 0
+        grad_norms = []
         losses_recon = AverageMeter()
         losses_logvar = AverageMeter()
         losses_firing = AverageMeter()
@@ -181,6 +185,9 @@ class AEU_QBWorker(AEUWorker):
 
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
+                gn = torch.nn.utils.clip_grad_norm_(self.net.parameters(),
+                                                    max_norm=grad_clip if grad_clip > 0 else float('inf'))
+                grad_norms.append(gn.detach())
                 self.optimizer.step()
                 losses.update(loss.detach(), img.size(0))
 
@@ -192,6 +199,15 @@ class AEU_QBWorker(AEUWorker):
                     losses_perceptual.avg
             ))
         _f = lambda v: float(v)
+        if grad_norms:
+            gns = torch.stack(grad_norms).float()
+            finite = torch.isfinite(gns)
+            self.last_grad_stats = {
+                "train/grad_norm_mean": float(gns[finite].mean()) if bool(finite.any()) else float('nan'),
+                "train/grad_norm_max": float(gns[finite].max()) if bool(finite.any()) else float('nan'),
+                "train/grad_clipped_fraction": float((gns > grad_clip).float().mean()) if grad_clip > 0 else 0.0,
+                "train/grad_nonfinite_steps": int((~finite).sum()),
+            }
         return (_f(losses.avg), _f(losses_recon.avg), _f(losses_logvar.avg), _f(losses_firing.avg),
                 _f(losses_perceptual.avg), _f(firing_rates.avg), _f(real_firing_rates.avg))
 
@@ -575,6 +591,7 @@ class AEU_QBWorker(AEUWorker):
                 , "train/loss_perceptual": loss_perceptual
                 , "train/firing_rate": firing_rate
                 , "train/real_firing_rate": real_firing_rate
+                , **getattr(self, 'last_grad_stats', {})
             })
             # self.logger.log(step=epoch, data={"train/loss": train_loss, "train/lr": self.scheduler.get_last_lr()[0]})
             # self.scheduler.step()

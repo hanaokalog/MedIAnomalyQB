@@ -111,6 +111,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | `--perceptual_bf16` / `--no-perceptual_bf16` | on | run VGG19 in bf16 autocast during training (evaluation is fp32) |
 | `--test_batch_size` | 64 | evaluation batch size (results are batch-size independent) |
 | `--num_workers` | 4 | DataLoader workers (`0` if the cluster restricts shared memory) |
+| `--grad_clip` | 1.0 | clip the global gradient norm (0 = off); `train/grad_norm_mean`, `train/grad_norm_max`, `train/grad_clipped_fraction` are logged (v32) |
 | `--ldp_samples` | 8 | number of independent noise draws averaged for the LDP (noisy) test-time readout (v32) |
 | `--full_eval` | off | additionally run range coding, PNG residual coding, one-class / few-shot classifiers and t-SNE (slow) |
 
