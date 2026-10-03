@@ -594,9 +594,10 @@ class AEU_QBWorker(AEUWorker):
                 , "train/firing_rate": firing_rate
                 , "train/real_firing_rate": real_firing_rate
                 , **getattr(self, 'last_grad_stats', {})
+                , "train/lr": self.optimizer.param_groups[0]['lr']
             })
-            # self.logger.log(step=epoch, data={"train/loss": train_loss, "train/lr": self.scheduler.get_last_lr()[0]})
-            # self.scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             if epoch == 1 or epoch % self.opt.train['eval_freq'] == 0:
                 eval_results = self.evaluate(epoch)

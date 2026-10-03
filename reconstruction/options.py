@@ -98,6 +98,11 @@ class Options:
         parser.add_argument('--num_workers', type=int, default=4, help='DataLoader workers (0 = load in the main process)')
         parser.add_argument('--perceptual_bf16', action=argparse.BooleanOptionalAction, default=True,
                             help='run the VGG19 perceptual loss in bf16 autocast during training (evaluation stays fp32)')
+        # v33: learning-rate schedule (v32 and earlier: constant)
+        parser.add_argument('--lr_schedule', type=str, default='cosine', choices=['const', 'cosine'],
+                            help='const: constant lr (v32); cosine: linear warm-up then cosine decay to --lr_min (v33)')
+        parser.add_argument('--warmup_epochs', type=int, default=5, help='linear warm-up epochs for --lr_schedule cosine')
+        parser.add_argument('--lr_min', type=float, default=1e-5, help='final learning rate of the cosine schedule')
         parser.add_argument('--grad_clip', type=float, default=1.0,
                             help='clip the global gradient norm to this value (0 = no clipping; the norm is logged either way)')
         parser.add_argument('--ldp_samples', type=int, default=8,
@@ -164,6 +169,9 @@ class Options:
         self.test['full_eval'] = args.full_eval
         self.test['ldp_samples'] = args.ldp_samples
         self.train['grad_clip'] = args.grad_clip
+        self.train['lr_schedule'] = args.lr_schedule
+        self.train['warmup_epochs'] = args.warmup_epochs
+        self.train['lr_min'] = args.lr_min
         self.test['batch_size'] = args.test_batch_size
         self.train['num_workers'] = args.num_workers
         self.train['perceptual_bf16'] = args.perceptual_bf16

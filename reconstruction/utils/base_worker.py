@@ -187,9 +187,21 @@ class BaseWorker:
         self.optimizer = torch.optim.AdamW(self.net.parameters(), self.opt.train['lr'],
                                           weight_decay=self.opt.train['weight_decay'],
                                           fused=torch.cuda.is_available())
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
-        #                                                             T_max=self.opt.train['epochs'],
-        #                                                             eta_min=5e-5)
+        # v33: per-epoch schedule (stepped at the end of each epoch in run_train)
+        # (only the QBAE worker steps the scheduler; other benchmark methods keep a constant lr)
+        if self.opt.train.get('lr_schedule', 'const') == 'cosine' and self.opt.model.get('name') == 'unet-qb':
+            import math
+            E = self.opt.train['epochs']
+            W = max(0, int(self.opt.train.get('warmup_epochs', 0)))
+            floor = self.opt.train.get('lr_min', 0.0) / self.opt.train['lr']
+            def factor(e):  # e = number of completed epochs (0 for the first epoch)
+                if e < W:
+                    return (e + 1) / (W + 1)
+                t = min(1.0, (e - W) / max(1, E - W))
+                return floor + (1 - floor) * 0.5 * (1 + math.cos(math.pi * t))
+            self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, factor)
+        else:
+            self.scheduler = None
 
     def set_dataloader(self, test=False):
         data_path = get_data_path(dataset=self.opt.dataset)
@@ -302,6 +314,9 @@ class BaseWorker:
                        "full_eval": self.opt.test.get('full_eval'),
                        "ldp_samples": self.opt.test.get('ldp_samples'),
                        "grad_clip": self.opt.train.get('grad_clip'),
+                       "lr_schedule": self.opt.train.get('lr_schedule'),
+                       "warmup_epochs": self.opt.train.get('warmup_epochs'),
+                       "lr_min": self.opt.train.get('lr_min'),
                        "test_batch_size": self._test_batch_size(),
                        "perceptual_bf16": self.opt.train.get('perceptual_bf16'),
 

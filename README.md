@@ -114,6 +114,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | `--test_batch_size` | 64 | evaluation batch size (results are batch-size independent) |
 | `--num_workers` | 4 | DataLoader workers (`0` if the cluster restricts shared memory) |
 | `--grad_clip` | 1.0 | clip the global gradient norm (0 = off); `train/grad_norm_mean`, `train/grad_norm_max`, `train/grad_clipped_fraction` are logged (v32) |
+| `--lr_schedule {cosine,const}`, `--warmup_epochs`, `--lr_min` | `cosine`, 5, 1e-5 | learning-rate schedule (v33): linear warm-up, then cosine decay from `--train-lr` to `--lr_min`; `const` = v32 and earlier. `train/lr` is logged |
 | `--ldp_samples` | 8 | number of independent noise draws averaged for the LDP (noisy) test-time readout (v32) |
 | `--full_eval` | off | additionally run range coding, PNG residual coding, one-class / few-shot classifiers and t-SNE (slow) |
 
