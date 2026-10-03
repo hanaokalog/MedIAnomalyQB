@@ -165,7 +165,8 @@ class BaseWorker:
                 using_identity_connection=self.opt.model['using_identity_connection'],
                 top_mixer=self.opt.model['top_mixer'],
                 top_attn_depth=self.opt.model['top_attn_depth'],
-                norm_type=self.opt.model['norm_type']
+                norm_type=self.opt.model['norm_type'],
+                top_pos=self.opt.model.get('top_pos', 'none')
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
@@ -288,6 +289,7 @@ class BaseWorker:
                        "latent_size_with_noise": self.opt.model['latent_size_with_noise'],
                        "top_mixer": self.opt.model.get('top_mixer'),
                        "top_attn_depth": self.opt.model.get('top_attn_depth'),
+                       "top_pos": self.opt.model.get('top_pos'),
                        "norm_type": self.opt.model.get('norm_type'),
                        "full_eval": self.opt.test.get('full_eval'),
                        "ldp_samples": self.opt.test.get('ldp_samples'),

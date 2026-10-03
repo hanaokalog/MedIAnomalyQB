@@ -78,6 +78,8 @@ class Options:
         parser.add_argument('--top_mixer', type=str, default='attn', choices=['attn', 'fc'],
                             help='bottom bottleneck mixer: attn (token transformer on 8x8 grid) or fc (legacy dense layers)')
         parser.add_argument('--top_attn_depth', type=int, default=2, help='number of attention blocks before/after the bottom QB')
+        parser.add_argument('--top_pos', type=str, default='abs', choices=['none', 'abs'],
+                            help='v32: positional embedding of the 8x8 tokens in the attention top mixer (abs: learned absolute; none: v31)')
         parser.add_argument('--norm_type', type=str, default='group', choices=['group', 'batch'],
                             help='normalisation around the bottom QB and in the attention gates (group: per-sample; batch: legacy)')
         parser.add_argument('--test_batch_size', type=int, default=64,
@@ -127,6 +129,7 @@ class Options:
         self.model['attention_gate'] = args.attention_gate
         self.model['top_mixer'] = args.top_mixer
         self.model['top_attn_depth'] = args.top_attn_depth
+        self.model['top_pos'] = args.top_pos
         self.model['norm_type'] = args.norm_type
 
         # --- training params --- #

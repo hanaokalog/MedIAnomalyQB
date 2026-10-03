@@ -83,7 +83,8 @@ class UNet_QB(UNet):
             attention_gate=True,
             top_mixer="attn",        # "attn" (token transformer, v31 default) or "fc" (legacy)
             top_attn_depth=2,        # number of (SpatialAttn + FFN) blocks before and after the bottom QB
-            norm_type="group"        # "group" (per-sample, v31 default) or "batch" (legacy)
+            norm_type="group",       # "group" (per-sample, v31 default) or "batch" (legacy)
+            top_pos="abs"            # v32: "abs" = learned absolute 2D positional embedding on the 8x8 tokens, "none" = v31
     ):
         """
         QuasiBinarization version of
@@ -123,6 +124,8 @@ class UNet_QB(UNet):
         self.top_mixer = top_mixer
         self.norm_type = norm_type
         assert top_mixer in ("attn", "fc")
+        assert top_pos in ("none", "abs")
+        self.top_pos = top_pos
 
         self._using_heaviside = using_heaviside
         self._adding_noise_in_test = adding_noise_in_test
@@ -204,6 +207,16 @@ class UNet_QB(UNet):
             self.top_post_proj = nn.Conv2d(top_latent_ch, prev_channels, kernel_size=1, padding=0)
             self.top_post_mixer = nn.Sequential(*[nn.Sequential(SpatialAttn(prev_channels), FFN(prev_channels))
                                                   for _ in range(top_attn_depth)])
+            if top_pos == "abs":
+                # v32: the attention mixer is permutation-equivariant (no position information except at the
+                # zero-padded border of the depth-wise conv in FFN), whereas the v30 FC layers had
+                # position-specific weights. A learned absolute embedding per 8x8 token restores this.
+                # Separate tables before and after the QB layer; the post table is added after the QB, so it
+                # carries no information about the input and does not affect the information budget.
+                self.top_pos_pre = nn.Parameter(torch.zeros(1, prev_channels, top_input_image_size, top_input_image_size))
+                self.top_pos_post = nn.Parameter(torch.zeros(1, prev_channels, top_input_image_size, top_input_image_size))
+                nn.init.trunc_normal_(self.top_pos_pre, std=0.02)
+                nn.init.trunc_normal_(self.top_pos_post, std=0.02)
         else:
             # legacy (v30) dense bottleneck
             self.top_prepreneckConv = nn.Conv2d(prev_channels,mid_channels_per_pixel, kernel_size=1, padding=0)
@@ -337,6 +350,8 @@ class UNet_QB(UNet):
         batch_size = x.shape[0]
 
         if self.top_mixer == "attn":
+            if self.top_pos == "abs":
+                x = x + self.top_pos_pre
             h = self.top_pre_mixer(x)
             h = self.top_pre_proj(h)
             h = self.top_pre_norm(h)
@@ -348,6 +363,8 @@ class UNet_QB(UNet):
             top_recon_loss = torch.zeros((batch_size, 1, 1, 1), device=x.device, dtype=x.dtype)
             h = z_top.reshape(h_shape)
             h = self.top_post_proj(h)
+            if self.top_pos == "abs":
+                h = h + self.top_pos_post
             x = self.top_post_mixer(h)
         else:
             shortcut = x

@@ -106,6 +106,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | `--use_KL_divergence`, `--rho` | off, 0.05 | KL sparsity penalty on the mean QB activation (weight `--firing_rate_cost_weight`) |
 | `--using_identity_connection` / `--no-using_identity_connection` | on | identity shortcut in the conv blocks |
 | `--top_mixer {attn,fc}` | `attn` | attention mixer around the bottom QB, or the legacy dense FC bottleneck (v30) |
+| `--top_pos {abs,none}` | `abs` | learned absolute positional embedding added to the 8 × 8 tokens before and after the bottom QB (v32; `none` = v31) |
 | `--top_attn_depth` | 2 | number of (SpatialAttn + FFN) blocks before and after the bottom QB |
 | `--norm_type {group,batch}` | `group` | normalisation in the bottom mixer and attention gates (GroupNorm is per sample) |
 | `--perceptual_bf16` / `--no-perceptual_bf16` | on | run VGG19 in bf16 autocast during training (evaluation is fp32) |
