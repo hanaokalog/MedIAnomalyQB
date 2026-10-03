@@ -73,7 +73,9 @@ class Options:
         parser.add_argument('--not_use_log_var', action='store_true')
         parser.add_argument('--use_KL_divergence', action='store_true')
         parser.add_argument('--rho', type=float, default=0.05)
-        parser.add_argument('--attention_gate', action='store_true')
+        # v32: default on (all reported runs use it; without it training can diverge). Disable with --no-attention_gate
+        parser.add_argument('--attention_gate', action=argparse.BooleanOptionalAction, default=True,
+                            help='CBAM cross-attention gate between skip and up path')
         # v31
         parser.add_argument('--top_mixer', type=str, default='attn', choices=['attn', 'fc'],
                             help='bottom bottleneck mixer: attn (token transformer on 8x8 grid) or fc (legacy dense layers)')

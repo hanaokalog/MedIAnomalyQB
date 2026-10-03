@@ -84,7 +84,7 @@ python train.py -d brats -m unet-qb -g 0 \
     --latent_size_with_noise 32768 \
     --epsilon 100 \
     --noise 1.0 \
-    --attention_gate --not_use_log_var \
+    --not_use_log_var \
     --perceptual_loss_weight 1 \
     -bs 64 --train-seed 0
 ```
@@ -101,7 +101,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | `--latent_size_with_noise` | 4096 | number of bottom QB channels (must be a multiple of 64 for 128² input); 32,768 = 512 × 8 × 8 |
 | `--noise` | 0.0 | strength of the DAE-style blob noise added to the input during training (relative to the image std); `0` disables it |
 | `--heaviside` | off | apply the Heaviside in every QB layer, also during training (evaluation always reports both modes) |
-| `--attention_gate` | off | CBAM cross-attention gate between skip and up path (used in all reported runs) |
+| `--attention_gate` / `--no-attention_gate` | on | CBAM cross-attention gate between skip and up path (default since v32; without it training can diverge) |
 | `--not_use_log_var` | off | disable the per-pixel variance head (used in all reported runs) |
 | `--use_KL_divergence`, `--rho` | off, 0.05 | KL sparsity penalty on the mean QB activation (weight `--firing_rate_cost_weight`) |
 | `--using_identity_connection` / `--no-using_identity_connection` | on | identity shortcut in the conv blocks |
