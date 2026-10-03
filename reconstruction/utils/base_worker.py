@@ -166,7 +166,11 @@ class BaseWorker:
                 top_mixer=self.opt.model['top_mixer'],
                 top_attn_depth=self.opt.model['top_attn_depth'],
                 norm_type=self.opt.model['norm_type'],
-                top_pos=self.opt.model.get('top_pos', 'none')
+                top_pos=self.opt.model.get('top_pos', 'none'),
+                depth=self.opt.model.get('depth', 5),
+                latent_sizes_per_pixel=tuple(self.opt.model.get('skip_latent_sizes', (1, 2, 4, 8))) + (0,),
+                max_channels=self.opt.model.get('max_channels', 0),
+                top_mid_channels=self.opt.model.get('top_mid_channels', 32)
             )
             self.criterion = AEU_Perceptual_QBLoss(
                 firing_rate_cost_weight=self.opt.model['firing_rate_cost_weight'],
@@ -290,6 +294,10 @@ class BaseWorker:
                        "top_mixer": self.opt.model.get('top_mixer'),
                        "top_attn_depth": self.opt.model.get('top_attn_depth'),
                        "top_pos": self.opt.model.get('top_pos'),
+                       "depth": self.opt.model.get('depth'),
+                       "skip_latent_sizes": ",".join(str(v) for v in self.opt.model.get('skip_latent_sizes', ())),
+                       "max_channels": self.opt.model.get('max_channels'),
+                       "top_mid_channels": self.opt.model.get('top_mid_channels'),
                        "norm_type": self.opt.model.get('norm_type'),
                        "full_eval": self.opt.test.get('full_eval'),
                        "ldp_samples": self.opt.test.get('ldp_samples'),

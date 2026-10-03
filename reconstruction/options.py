@@ -82,6 +82,15 @@ class Options:
         parser.add_argument('--top_attn_depth', type=int, default=2, help='number of attention blocks before/after the bottom QB')
         parser.add_argument('--top_pos', type=str, default='abs', choices=['none', 'abs'],
                             help='v32: positional embedding of the 8x8 tokens in the attention top mixer (abs: learned absolute; none: v31)')
+        # v32: deeper U-Net variants. Example (7 levels, channels 16..1024, skip QB budgets halving per level,
+        # remaining 31,232 QB channels through flatten + FC at 2x2; same total 63,488 as the default):
+        #   --depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 31232 --top_mixer fc --top_mid_channels 128
+        parser.add_argument('--depth', type=int, default=5, help='number of U-Net levels (5: 8x8 top at 128^2 input; 7: 2x2 top)')
+        parser.add_argument('--skip_latent_sizes', type=str, default='1,2,4,8',
+                            help='QB channels per pixel of the skip connections, from the finest level (depth-1 entries; 0 = no skip)')
+        parser.add_argument('--max_channels', type=int, default=0, help='cap on the feature width of every level (0 = 2**(wf+i), no cap)')
+        parser.add_argument('--top_mid_channels', type=int, default=32,
+                            help='channels per pixel entering/leaving the dense layers of the FC top mixer')
         parser.add_argument('--norm_type', type=str, default='group', choices=['group', 'batch'],
                             help='normalisation around the bottom QB and in the attention gates (group: per-sample; batch: legacy)')
         parser.add_argument('--test_batch_size', type=int, default=64,
@@ -132,6 +141,11 @@ class Options:
         self.model['top_mixer'] = args.top_mixer
         self.model['top_attn_depth'] = args.top_attn_depth
         self.model['top_pos'] = args.top_pos
+        self.model['depth'] = args.depth
+        self.model['skip_latent_sizes'] = tuple(int(v) for v in args.skip_latent_sizes.split(','))
+        assert len(self.model['skip_latent_sizes']) == args.depth - 1, '--skip_latent_sizes needs depth-1 entries'
+        self.model['max_channels'] = args.max_channels
+        self.model['top_mid_channels'] = args.top_mid_channels
         self.model['norm_type'] = args.norm_type
 
         # --- training params --- #

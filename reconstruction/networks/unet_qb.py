@@ -84,7 +84,9 @@ class UNet_QB(UNet):
             top_mixer="attn",        # "attn" (token transformer, v31 default) or "fc" (legacy)
             top_attn_depth=2,        # number of (SpatialAttn + FFN) blocks before and after the bottom QB
             norm_type="group",       # "group" (per-sample, v31 default) or "batch" (legacy)
-            top_pos="abs"            # v32: "abs" = learned absolute 2D positional embedding on the 8x8 tokens, "none" = v31
+            top_pos="abs",           # v32: "abs" = learned absolute 2D positional embedding on the 8x8 tokens, "none" = v31
+            max_channels=0,          # v32: cap on the channel width 2**(wf+i) of every level (0 = no cap)
+            top_mid_channels=None    # v32: channels per pixel entering the FC top mixer (None = mid_channels_per_pixel)
     ):
         """
         QuasiBinarization version of
@@ -126,6 +128,11 @@ class UNet_QB(UNet):
         assert top_mixer in ("attn", "fc")
         assert top_pos in ("none", "abs")
         self.top_pos = top_pos
+        # v32: channel width of level i (capped for deep variants, e.g. depth 7 with max_channels 256)
+        ch = lambda i: min(2 ** (wf + i), max_channels) if max_channels else 2 ** (wf + i)
+        self.level_channels = [ch(i) for i in range(depth)]
+        if top_mid_channels:
+            mid_channels_per_pixel = top_mid_channels
 
         self._using_heaviside = using_heaviside
         self._adding_noise_in_test = adding_noise_in_test
@@ -144,11 +151,11 @@ class UNet_QB(UNet):
             self.residual_down = nn.ModuleList()
         for i in range(depth):
             self.down_path.append(
-                UNetConvBlock(prev_channels, 2 ** (wf + i), padding, norm=norm, using_identity=using_identity_connection)
+                UNetConvBlock(prev_channels, ch(i), padding, norm=norm, using_identity=using_identity_connection)
             )
             if self.down_mode == 'residual_autoencoder' and i < depth - 1:
                 # (no downsampling after the deepest level; v30 created an unused module here)
-                self.residual_down.append(ResidualDown(2 ** (wf + i), 2 ** (wf + i)))
+                self.residual_down.append(ResidualDown(ch(i), ch(i)))
 
             if i == depth - 1:
                 # v31: the deepest skip was computed (and counted in z) but never used by the decoder -> removed
@@ -161,7 +168,7 @@ class UNet_QB(UNet):
                 )
                 self.bottlenecks.append(
                     QuasiBinarizingLayer(
-                        2 ** (wf + i) * (image_size//(2**i))**2, 
+                        ch(i) * (image_size//(2**i))**2, 
                         epsilon_per_dimension=epsilon,
                         using_heaviside=using_heaviside,
                         adding_noise_in_test=adding_noise_in_test
@@ -173,7 +180,7 @@ class UNet_QB(UNet):
             else:
                 if 0<latent_sizes_per_pixel[i]:
                     self.preneckconvs.append(
-                        nn.Conv2d(2 ** (wf + i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
+                        nn.Conv2d(ch(i), latent_sizes_per_pixel[i], kernel_size=1, padding=0)
                     )
                     self.bottlenecks.append(
                         QuasiBinarizingLayer(
@@ -184,13 +191,13 @@ class UNet_QB(UNet):
                         )
                     )
                     self.postneckconvs.append(
-                        nn.Conv2d(latent_sizes_per_pixel[i], 2 ** (wf + i), kernel_size=1, padding=0)
+                        nn.Conv2d(latent_sizes_per_pixel[i], ch(i), kernel_size=1, padding=0)
                     )
                 else:
                     self.preneckconvs.append(None)
                     self.bottlenecks.append(None)
                     self.postneckconvs.append(None)
-            prev_channels = 2 ** (wf + i)
+            prev_channels = ch(i)
 
         # top block
 
@@ -240,9 +247,9 @@ class UNet_QB(UNet):
         current_image_size = self.image_size // (2 ** (depth-1))
         for i in reversed(range(depth - 1)):
             self.up_path.append(
-                UNetUpBlock(prev_channels, 2 ** (wf + i), up_mode, padding, norm=norm, islast=(i==0), attention_gate=attention_gate,  attention_selector=True, image_size=current_image_size, using_identity=using_identity_connection, norm_type=norm_type)
+                UNetUpBlock(prev_channels, ch(i), up_mode, padding, norm=norm, islast=(i==0), attention_gate=attention_gate,  attention_selector=True, image_size=current_image_size, using_identity=using_identity_connection, norm_type=norm_type)
             )
-            prev_channels = 2 ** (wf + i)
+            prev_channels = ch(i)
             current_image_size = current_image_size * 2
 
         # last convs
@@ -569,11 +576,12 @@ class UNetUpBlock(nn.Module):
         elif up_mode == 'residual_autoencoder':
             self.up = ResidualUp(in_size, out_size)
 
-        self.conv_block = UNetConvBlock(in_size, out_size, padding, norm=norm, using_identity=using_identity)
+        # the up path (out_size ch) is concatenated with the skip (out_size ch); in v31 in_size == 2*out_size always,
+        # with a channel cap (v32 deep variants) in_size can equal out_size, so use 2*out_size explicitly
+        self.conv_block = UNetConvBlock(2 * out_size, out_size, padding, norm=norm, using_identity=using_identity)
 
         if attention_gate:
-            assert(in_size//2 == out_size)
-            conv_in_size = in_size//2
+            conv_in_size = out_size
             self.cbamcag = CBAMCrossAttentionGate(F_g=conv_in_size, F_l=conv_in_size, F_int=conv_in_size//2, norm_type=norm_type)
         else:
             self.cbamcag = None
