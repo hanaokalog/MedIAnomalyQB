@@ -1,6 +1,6 @@
 import cairosvg, os
 
-W, H = 1600, 2650
+W, H = 1600, 2650 + 165
 out = []
 def add(s): out.append(s)
 
@@ -84,38 +84,37 @@ add(f'<rect width="{W}" height="{H}" fill="white"/>')
 # =====================================================================================
 # (a) overall architecture
 # =====================================================================================
-text(20, 20, "**(a) Overall architecture  (wf = 4, depth = 5, 128 × 128 input, 6.65 M parameters)", size=FS, anchor="start")
-res = [128, 64, 32, 16, 8]
-ch = [16, 32, 64, 128, 256]
-kq = [1, 2, 4, 8]
-gn = {16: 4, 32: 8, 64: 8, 128: 16, 256: 16, 512: 32}
-Y = [190, 335, 480, 625, 770]
+text(20, 20, "**(a) Overall architecture  (wf = 4, depth = 7, 128 × 128 input, 60.7 M parameters)", size=FS, anchor="start")
+res = [128, 64, 32, 16, 8, 4, 2]
+ch = [16, 32, 64, 128, 256, 512, 1024]
+kq = [1, 2, 4, 8, 16, 32]
+gn = {16: 4, 32: 8, 64: 8, 128: 16, 256: 16, 512: 32, 1024: 32}
+Y = [178, 300, 422, 544, 666, 788, 910]
 BH = 84
 EX, EW = 20, 260
 C1X, C1W = 318, 96
 QX, QW = 452, 390
 C2X = 880
 DX, DW = 1014, 566
-cin = ["C_in", "16", "32", "64", "128"]
+cin = ["C_in", "16", "32", "64", "128", "256", "512"]
 
 box(EX, 44, EW, 66, "io", ["input x  (C_in × 128²)", "x − 1  (+ blob noise, train)"], size=FS3)
 arrow([(EX + EW/2, 110), (EX + EW/2, Y[0] - BH/2)])
 box(DX, 44, DW, 66, "io", ["**output head:  x̂ = head(·) + 1",
                            "LReLU · Conv3×3 16→16 · LReLU · Conv3×3 16→C_in"], size=FS3)
 
-for i in range(5):
+for i in range(7):
     y = Y[i]
     box(EX, y - BH/2, EW, BH, "enc", [f"**ConvBlock (e) {cin[i]}→{ch[i]}",
                                        f"{res[i]} × {res[i]} · GN({gn[ch[i]]})",
                                        "1×1-conv shortcut"], size=FS3, lh=19)
-    if i < 4:
+    if i < 6:
         arrow([(EX + EW/2, y + BH/2), (EX + EW/2, Y[i+1] - BH/2)])
         text(EX + EW/2 + 10, (y + BH/2 + Y[i+1] - BH/2) / 2, f"ResidualDown (c) {ch[i]}→{ch[i]}", size=FS3,
              anchor="start", color="#2b5c8f")
 
-up_attn = ["attention: none", "attention: ChannelAttn + FFN (h)",
-           "attention: SpatialAttn + FFN (h)", "attention: SpatialAttn + FFN (h)"]
-for i in range(4):
+up_attn = ["attention: none", "attention: ChannelAttn + FFN (h)"] + ["attention: SpatialAttn + FFN (h)"] * 4
+for i in range(6):
     y = Y[i]; n = kq[i] * res[i] ** 2
     arrow([(EX + EW, y), (C1X, y)])
     box(C1X, y - 26, C1W, 52, "conv", ["1×1 conv", f"{ch[i]}→{kq[i]}"], size=FS3, lh=18)
@@ -125,33 +124,33 @@ for i in range(4):
     box(C2X, y - 26, C1W, 52, "conv", ["1×1 conv", f"{kq[i]}→{ch[i]}"], size=FS3, lh=18)
     arrow([(C2X + C1W, y), (DX, y)])
     text((C2X + C1W + DX) / 2, y - 14, "ŝ", size=FS2, italic=True)
-    box(DX, y - 52, DW, 104, "dec", [f"**Up block (f) · {ch[i]} ch · {res[i]} × {res[i]}",
+    box(DX, y - 50, DW, 100, "dec", [f"**Up block (f) · {ch[i]} ch · {res[i]} × {res[i]}",
                                       f"ResidualUp (d) {2*ch[i]}→{ch[i]} · CBAM gate (g), F_int = {ch[i]//2}",
                                       f"concat → ConvBlock (e) {2*ch[i]}→{ch[i]}, GN({gn[ch[i]]})",
                                       up_attn[i]], size=FS3, lh=21)
-    if i < 3:
-        arrow([(DX + DW/2, Y[i+1] - 52), (DX + DW/2, y + 52)])
-arrow([(DX + DW/2, Y[0] - 52), (DX + DW/2, 110)])
+    if i < 5:
+        arrow([(DX + DW/2, Y[i+1] - 50), (DX + DW/2, y + 50)])
+arrow([(DX + DW/2, Y[0] - 50), (DX + DW/2, 110)])
 
-# bottleneck row
-by, bh = 852, 104
-arrow([(EX + EW/2, Y[4] + BH/2), (EX + EW/2, by)])
-box(EX, by, 390, bh, "conv", ["**Top mixer, encoder side (i)", "(SpatialAttn + FFN)(256) × 2",
-                              "1×1 conv 256→512 · GN(32) · ParamAtan"], size=FS3, lh=22)
+# bottleneck row: dense FC around the 2x2 bottom QB
+by, bh = 1000, 110
+arrow([(EX + EW/2, Y[6] + BH/2), (EX + EW/2, by)])
+box(EX, by, 390, bh, "conv", ["**FC top, encoder side (i)", "1×1 conv 1024→128 · GN · LReLU · flatten",
+                              "FC 512→512 · GN(1) (+ 1×1-conv shortcut)", "ParamAtan"], size=FS3, lh=22)
 arrow([(EX + 390, by + bh/2), (QX + 30, by + bh/2)])
-box(QX + 30, by + 18, QW - 60, bh - 36, "qb", ["**QB (b)  512×8×8 = 32,768"], size=FS2)
+box(QX + 30, by + 22, QW - 60, bh - 44, "qb", ["**QB (b)  128×2×2 = 512"], size=FS2)
 arrow([(QX + QW - 30, by + bh/2), (DX, by + bh/2)])
-box(DX, by, DW, bh, "conv", ["**Top mixer, decoder side (i)", "1×1 conv 512→256",
-                             "(SpatialAttn + FFN)(256) × 2"], size=FS3, lh=22)
-arrow([(DX + DW/2, by), (DX + DW/2, Y[3] + 52)])
-text(DX + DW/2 + 10, (Y[3] + 52 + by) / 2, "256 × 8 × 8", size=FS3, anchor="start", color="#2f7a3a")
-text((EX + EW + DX) / 2 + 40, Y[4] - 12, "decoder receives only QB outputs:", size=FS3, color="#444")
-text((EX + EW + DX) / 2 + 40, Y[4] + 12, "16,384 + 8,192 + 4,096 + 2,048 + 32,768 = 63,488 channels", size=FS3, color="#444")
+box(DX, by, DW, bh, "conv", ["**FC top, decoder side (i)", "FC 512→512 · reshape 128×2×2 · LReLU · GN",
+                             "1×1 conv 128→1024  (+ 1×1-conv shortcut)"], size=FS3, lh=22)
+arrow([(DX + DW/2, by), (DX + DW/2, Y[5] + 50)])
+text(DX + DW/2 + 10, (Y[5] + 50 + by) / 2, "1024 × 2 × 2", size=FS3, anchor="start", color="#2f7a3a")
+text((EX + EW + DX) / 2 + 40, Y[6] - 12, "decoder receives only QB outputs:", size=FS3, color="#444")
+text((EX + EW + DX) / 2 + 40, Y[6] + 12, "16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 + 512 = 32,768 = 2¹⁵", size=FS3, color="#444")
 
 # =====================================================================================
 # row 1: (b) QB, (c) ResidualDown, (d) ResidualUp
 # =====================================================================================
-PY, PH, PW = 990, 290, 513
+PY, PH, PW = 990 + 165, 290, 513
 PX = [20, 543, 1067]
 panel(PX[0], PY, PW, PH, "(b) QB layer", "N channels, per sample")
 panel(PX[1], PY, PW, PH, "(c) ResidualDown", "C×H×W → C×H/2×W/2")
@@ -205,7 +204,7 @@ residual_panel(PX[2], (["Conv 3×3", "C → 4C′"], ["Pixel-", "Shuffle(2)"]),
 # =====================================================================================
 # row 2: (e) ConvBlock, (f) Up block, (g) CBAM cross-attention gate
 # =====================================================================================
-RY, RH = 1300, 660
+RY, RH = 1300 + 165, 660
 ex, ew = 20, 400
 fx, fw = 440, 500
 gx, gw = 960, 620
@@ -232,8 +231,9 @@ arrow([(ex + 340, (RY + 86 + yp) / 2 + 34), (ex + 340, yp), (cx + 13, yp)])
 opcircle(cx, yp)
 arrow([(cx, yp + 13), (cx, yp + 40)])
 text(cx, yp + 52, "C × H × W", size=FS3, italic=True)
-text(ex + 16, RY + RH - 50, ["WS = weight-standardised conv;  g(C): 16→4, 32→8,",
-                             "64→8, 128→16, 256→16;  shortcut on by default",
+text(ex + 16, RY + RH - 60, ["WS = weight-standardised conv;  g(C): 16→4,",
+                             "32→8, 64→8, 128→16, 256→16, 512/1024→32;",
+                             "shortcut on by default",
                              "(--no-using_identity_connection removes it)"], size=13, anchor="start", lh=19)
 
 # (f)
@@ -257,7 +257,7 @@ arrow([(lx, oy + 16), (lx, cy_), (fx + fw/2 - 60, cy_)])
 arrow([(rx, oy + 16), (rx, cy_), (fx + fw/2 + 60, cy_)])
 box(fx + fw/2 - 60, cy_ - 20, 120, 40, "conv", ["concat → 2C"], size=FS3)
 items = [(["ConvBlock (e) 2C → C", "with 1×1-conv shortcut"], "dec", 52),
-         (["stage attention (h)", "128²: none · 64²: ChannelAttn + FFN", "32², 16²: SpatialAttn + FFN"], "att", 70)]
+         (["stage attention (h)", "128²: none · 64²: ChannelAttn + FFN", "32² … 4²: SpatialAttn + FFN"], "att", 70)]
 pos = vflow(fx + fw/2, cy_ + 46, 380, items, gap=22)
 arrow([(fx + fw/2, cy_ + 20), (fx + fw/2, cy_ + 46)])
 arrow([(fx + fw/2, pos[-1][1]), (fx + fw/2, pos[-1][1] + 30)])
@@ -279,7 +279,7 @@ arrow([(gx + gw - 150, RY + 136), (gx + gw - 150, py_), (gcx + 13, py_)])
 opcircle(gcx, py_)
 items = [(["ReLU  →  m  (F_int × 2H × 2W)"], "act", 36),
          (["**channel attention", "avg-pool, max-pool over H, W",
-           "shared MLP  F_int → 4 → F_int  (ReLU)", "sum → sigmoid → m ⊙ w_c"], "att", 92),
+           "shared MLP  F_int → h → F_int  (ReLU)", "sum → sigmoid → m ⊙ w_c"], "att", 92),
          (["**spatial attention", "[mean_c, max_c] → Conv 7×7, 2 → 1",
            "sigmoid → m ⊙ w_s"], "att", 74),
          (["Conv 1×1 F_int → 1 · GroupNorm(1, 1) · sigmoid", "→ a  (1 × 2H × 2W)"], "conv", 52)]
@@ -288,17 +288,17 @@ arrow([(gcx, py_ + 13), (gcx, py_ + 36)])
 yo = pos[-1][1] + 42
 arrow([(gcx, pos[-1][1]), (gcx, yo - 14)])
 text(gcx, yo, "outputs:  ŝ ⊙ a  and  u ⊙ (1 − a)", size=FS2)
-text(gx + 16, RY + RH - 34, ["MLP hidden width max(4, F_int/16) = 4 at all stages",
-                             "(F_int = 8, 16, 32, 64 for the 128², 64², 32², 16² stages)"], size=13, anchor="start", lh=19)
+text(gx + 16, RY + RH - 34, ["MLP hidden width h = max(4, F_int/16): 4, 4, 4, 4, 8, 16",
+                             "(F_int = 8, 16, 32, 64, 128, 256 for the 128² … 4² stages)"], size=13, anchor="start", lh=19)
 
 # =====================================================================================
 # row 3: (h) attention / FFN blocks, (i) top mixer, (k) head is in (a)
 # =====================================================================================
-AY, AH = 1980, 510
+AY, AH = 1980 + 165, 510
 hx, hw = 20, 960
 ix, iw = 1000, 580
 panel(hx, AY, hw, AH, "(h) Attention and FFN blocks", "all pre-norm residual, output proj. zero-initialised")
-panel(ix, AY, iw, AH, "(i) Top mixer around the bottom QB", "8 × 8 tokens")
+panel(ix, AY, iw, AH, "(i) FC top around the bottom QB", "2 × 2, 1024 ch")
 
 cols = [hx + 165, hx + 480, hx + 795]
 heads = ["SpatialAttn(C), 8 heads", "ChannelAttn(C), 4 heads", "FFN(C)"]
@@ -325,32 +325,32 @@ for cxh, hd, fl in zip(cols, heads, flows):
     arrow([(cxh, pos[-1][1]), (cxh, yp - 13)])
     residual(cxh, AY + 118, yp, cxh + 140)
     arrow([(cxh, yp + 13), (cxh, yp + 40)])
-text(hx + 16, AY + AH - 46, ["Used as (Attn + FFN) pairs:  decoder 16², 32² stages → SpatialAttn + FFN;  64² → ChannelAttn + FFN;  128² → none.",
+text(hx + 16, AY + AH - 46, ["Used as (Attn + FFN) pairs:  decoder 4² … 32² stages → SpatialAttn + FFN;  64² → ChannelAttn + FFN;  128² → none.",
                              "SpatialAttn uses scaled-dot-product attention; ChannelAttn (Restormer-style) has a learnable temperature τ per head."],
      size=13, anchor="start", lh=20)
 
 icx = ix + iw/2
-text(icx, AY + 58, "encoder output  256 × 8 × 8", size=FS3, italic=True)
-arrow([(icx, AY + 70), (icx, AY + 90)])
-items = [(["(SpatialAttn + FFN)(256) × 2  (h)"], "att", 34),
-         (["1×1 conv 256 → 512 · GroupNorm(32, 512)"], "conv", 34),
-         (["ParamAtan:  α·atan(β h + γ) + δ", "(learnable; β₀ = 0.01)"], "conv", 46),
-         (["flatten → QB (b), N = 32,768 → reshape 512 × 8 × 8"], "qb", 34),
-         (["1×1 conv 512 → 256"], "conv", 34),
-         (["(SpatialAttn + FFN)(256) × 2  (h)"], "att", 34)]
-pos = vflow(icx, AY + 90, 470, items, gap=18)
-arrow([(icx, pos[-1][1]), (icx, pos[-1][1] + 26)])
-text(icx, pos[-1][1] + 40, "→ first Up block (16²)", size=FS3, italic=True)
-text(ix + 16, AY + AH - 38, ["replaces the v30 dense FC bottleneck (≈ 134 M params);",
+text(icx, AY + 58, "encoder output  1024 × 2 × 2", size=FS3, italic=True)
+arrow([(icx, AY + 70), (icx, AY + 88)])
+items = [(["1×1 conv 1024 → 128 · GroupNorm(16) · LReLU", "flatten → 512"], "conv", 46),
+         (["FC 512 → 512 · GroupNorm(1, 512)", "+ 1×1 conv 1024 → 128 (flattened shortcut)"], "conv", 46),
+         (["ParamAtan:  α·atan(β h + γ) + δ   (β₀ = 0.01)"], "conv", 34),
+         (["QB (b), N = 512"], "qb", 34),
+         (["FC 512 → 512 · reshape 128 × 2 × 2", "LReLU · GroupNorm(16)"], "conv", 46),
+         (["1×1 conv 128 → 1024", "+ 1×1 conv 128 → 1024 shortcut from QB output"], "conv", 46)]
+pos = vflow(icx, AY + 88, 500, items, gap=14)
+arrow([(icx, pos[-1][1]), (icx, pos[-1][1] + 22)])
+text(icx, pos[-1][1] + 36, "→ first Up block (4²)", size=FS3, italic=True)
+text(ix + 16, AY + AH - 38, ["FC layers have position-specific weights over the 2 × 2 grid (≈ 0.5 M params);",
                              "ParamAtan keeps σ(·) in the QB away from saturation at init"], size=13, anchor="start", lh=19)
 
 # =====================================================================================
 # (j) training / scoring
 # =====================================================================================
-JY, JH = 2510, 130
+JY, JH = 2510 + 165, 130
 panel(20, JY, 1560, JH, "(j) Training objective and anomaly score")
 text(36, JY + 78, [
-    "train:  input x + blob noise (GPU, FFT-blurred random fields);  all QB layers add Laplace noise;  "
+    "train:  AdamW, lr 1e-3, cosine decay to 1e-5 after 5 warm-up epochs, gradient clipping 1.0;  input x + blob noise;  all QB layers add Laplace noise;  "
     "L = mean (x − x̂)²  +  λ_p · L_perc(x, x̂)  [ + optional KL sparsity on σ(h) ]",
     "L_perc: relative L1 between VGG19 relu4_2 features (ImageNet weights), random shift ≤ 8 px in training;  "
     "variance head unused (--not_use_log_var)",

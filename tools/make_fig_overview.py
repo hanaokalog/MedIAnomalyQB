@@ -1,6 +1,6 @@
 import cairosvg, os
 
-W, H = 1200, 1060
+W, H = 1200, 1180
 out = []
 def add(s): out.append(s)
 
@@ -46,63 +46,62 @@ add('<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6
 add(f'<rect width="{W}" height="{H}" fill="white"/>')
 
 # ---------------- (a) overall architecture ----------------
-text(20, 18, "**(a) Overall architecture", size=FS, anchor="start")
-res = [128, 64, 32, 16, 8]
-ch = [16, 32, 64, 128, 256]
-kq = [1, 2, 4, 8]
-Y = [140, 255, 370, 485, 600]          # row centres
-BH = 70
+text(20, 18, "**(a) Overall architecture  (7 levels, 128 × 128 input)", size=FS, anchor="start")
+res = [128, 64, 32, 16, 8, 4, 2]
+ch = [16, 32, 64, 128, 256, 512, 1024]
+kq = [1, 2, 4, 8, 16, 32]
+Y = [135, 232, 329, 426, 523, 620, 717]   # row centres
+BH = 62
 EX, EW = 20, 230
 C1X, C1W = 285, 62                     # 1x1 conv (pre)
 QX, QW = 380, 360                      # QB
 C2X = 773                              # 1x1 conv (post)
 DX, DW = 870, 310                      # decoder
 
-# input / output
 box(EX, 38, EW, 52, "io", ["input x", "(+ blob noise, train)"], size=FS2)
 arrow([(EX + EW/2, 90), (EX + EW/2, Y[0] - BH/2)])
 box(DX, 38, DW, 52, "io", ["reconstruction x̂", "score: L2 + VGG perceptual"], size=FS2)
 
-for i in range(5):
+for i in range(7):
     y = Y[i]
     box(EX, y - BH/2, EW, BH, "enc", [f"**Conv block · {ch[i]} ch", f"{res[i]} × {res[i]}"], size=FS2)
-    if i < 4:
+    if i < 6:
         arrow([(EX + EW/2, y + BH/2), (EX + EW/2, Y[i+1] - BH/2)])
-        text(EX + EW/2 + 10, (y + BH/2 + Y[i+1] - BH/2) / 2, "ResidualDown (c)", size=15,
+        text(EX + EW/2 + 10, (y + BH/2 + Y[i+1] - BH/2) / 2, "ResidualDown (c)", size=14,
              anchor="start", color="#2b5c8f")
 
-for i in range(4):
+attn = ["no attention", "+ channel attention"] + ["+ spatial attention"] * 4
+for i in range(6):
     y = Y[i]; n = kq[i] * res[i] ** 2
     arrow([(EX + EW, y), (C1X, y)])
-    box(C1X, y - 22, C1W, 44, "conv", ["1×1"], size=FS2)
+    box(C1X, y - 21, C1W, 42, "conv", ["1×1"], size=FS2)
     arrow([(C1X + C1W, y), (QX, y)])
-    box(QX, y - 28, QW, 56, "qb", [f"**QB (b)  {kq[i]}×{res[i]}×{res[i]} = {n:,}"], size=FS2)
+    box(QX, y - 26, QW, 52, "qb", [f"**QB (b)  {kq[i]}×{res[i]}×{res[i]} = {n:,}"], size=FS2)
     arrow([(QX + QW, y), (C2X, y)])
-    box(C2X, y - 22, C1W, 44, "conv", ["1×1"], size=FS2)
+    box(C2X, y - 21, C1W, 42, "conv", ["1×1"], size=FS2)
     arrow([(C2X + C1W, y), (DX, y)])
-    attn = ["no attention", "+ channel attention", "+ spatial attention", "+ spatial attention"][i]
-    box(DX, y - 38, DW, 76, "dec", [f"**Up block · {ch[i]} ch", "CBAM gate + conv block", attn], size=15, lh=19)
-    if i < 3:
-        arrow([(DX + DW/2, Y[i+1] - 38), (DX + DW/2, y + 38)])
-        text(DX + DW/2 + 10, (y + 38 + Y[i+1] - 38) / 2, "ResidualUp (d)", size=15,
+    box(DX, y - 36, DW, 72, "dec", [f"**Up block · {ch[i]} ch", "CBAM gate + conv block", attn[i]], size=15, lh=19)
+    if i < 5:
+        arrow([(DX + DW/2, Y[i+1] - 36), (DX + DW/2, y + 36)])
+        text(DX + DW/2 + 10, (y + 36 + Y[i+1] - 36) / 2, "ResidualUp (d)", size=14,
              anchor="start", color="#2f7a3a")
-arrow([(DX + DW/2, Y[0] - 38), (DX + DW/2, 90)])
+arrow([(DX + DW/2, Y[0] - 36), (DX + DW/2, 90)])
 
-# bottleneck row (v31: attention top mixer, no FC)
-by, bh = 668, 90
-arrow([(EX + EW/2, Y[4] + BH/2), (EX + EW/2, by)])
-box(EX, by, 330, bh, "conv", ["**Top mixer (encoder side)", "(SpatialAttn + FFN) × 2", "1×1 conv 256→512 · GN · ParamAtan"], size=15, lh=21)
+# bottleneck row: dense FC around the 2x2 bottom QB
+by, bh = 785, 92
+arrow([(EX + EW/2, Y[6] + BH/2), (EX + EW/2, by)])
+box(EX, by, 330, bh, "conv", ["**FC top (encoder side)", "1×1 conv 1024→128 · flatten (512)", "FC 512→512 (+ conv shortcut) · GN"], size=15, lh=21)
 arrow([(EX + 330, by + bh/2), (QX, by + bh/2)])
-box(QX, by + 12, QW, bh - 24, "qb", ["**QB (b)  512×8×8 = 32,768"], size=FS2)
+box(QX, by + 12, QW, bh - 24, "qb", ["**QB (b)  128×2×2 = 512"], size=FS2)
 arrow([(QX + QW, by + bh/2), (DX, by + bh/2)])
-box(DX, by, DW, bh, "conv", ["**Top mixer (decoder side)", "1×1 conv 512→256", "(SpatialAttn + FFN) × 2"], size=15, lh=21)
-arrow([(DX + DW/2, by), (DX + DW/2, Y[3] + 38)])
-text(DX + DW/2 + 10, (Y[3] + 38 + by) / 2, "ResidualUp (d)", size=15, anchor="start", color="#2f7a3a")
-text((EX + EW + DX) / 2, Y[4] - 12, "decoder receives only QB outputs:", size=15, color="#444")
-text((EX + EW + DX) / 2, Y[4] + 12, "16,384 + 8,192 + 4,096 + 2,048 + 32,768 = 63,488 channels", size=15, color="#444")
+box(DX, by, DW, bh, "conv", ["**FC top (decoder side)", "FC 512→512 (+ conv shortcut)", "reshape · 1×1 conv 128→1024"], size=15, lh=21)
+arrow([(DX + DW/2, by), (DX + DW/2, Y[5] + 36)])
+text(DX + DW/2 + 10, (Y[5] + 36 + by) / 2, "ResidualUp (d)", size=14, anchor="start", color="#2f7a3a")
+text((EX + EW + DX) / 2, Y[6] - 12, "decoder receives only QB outputs:", size=15, color="#444")
+text((EX + EW + DX) / 2, Y[6] + 12, "16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 + 512 = 32,768 = 2¹⁵", size=15, color="#444")
 
 # ---------------- insets ----------------
-PY, PH, PW = 785, 265, 375
+PY, PH, PW = 900, 265, 375
 PX = [20, 412, 805]
 titles = ["(b) QB layer", "(c) ResidualDown", "(d) ResidualUp"]
 subs = ["", "C×H×W → C×H/2×W/2", "C×H×W → C′×2H×2W"]

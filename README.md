@@ -39,8 +39,8 @@ the U-Net can use full-resolution skips, attention and DC-AE residual up/down-sa
 
 <p align="center"><img width=100% src="./images/qbae_network.png"></p>
 
-Overview (`wf = 4`, `depth = 5`, 128 × 128 input, 6.65 M parameters). The decoder receives only QB outputs:
-16,384 + 8,192 + 4,096 + 2,048 (skips) + 32,768 (bottom) = **63,488 QB channels**.
+Overview of the 7-level network used in the paper (`--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 512 --top_mixer fc --top_mid_channels 128`; 128 × 128 input, 60.7 M parameters). The decoder receives only QB outputs:
+16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 (skips) + 512 (bottom) = **32,768 QB channels**.
 [PDF](./images/qbae_network.pdf) · [SVG](./images/qbae_network.svg)
 
 <details>
@@ -57,10 +57,10 @@ Overview (`wf = 4`, `depth = 5`, 128 × 128 input, 6.65 M parameters). The decod
 | QB layer | sigmoid → + Laplace(0, 1/ε) (train) → identity / Heaviside / noisy (test) | `networks/base_units/quasibinarize.py` |
 | Encoder / decoder blocks | WS-Conv 3×3 → Swish → GroupNorm, ×2, + identity (1×1 conv if channels change) | `UNetConvBlock` |
 | Down / up-sampling | DC-AE residual autoencoding (PixelUnshuffle + channel averaging / channel repeat + PixelShuffle) | `networks/base_units/dcae_residual_autoencoding.py` |
-| Skip path | 1×1 conv → QB (1, 2, 4, 8 ch/pixel at 128², 64², 32², 16²) → 1×1 conv | `UNet_QB.forward_down` |
+| Skip path | 1×1 conv → QB (1, 2, 4, 8, 16, 32 ch/pixel at 128² … 4²) → 1×1 conv | `UNet_QB.forward_down` |
 | Skip / up-path mixing | CBAM cross-attention gate: skip ⊙ a, up ⊙ (1 − a) | `CBAMCrossAttentionGate` |
-| Decoder attention | 16², 32²: SpatialAttn + FFN; 64²: ChannelAttn + FFN; 128²: none | `networks/base_units/attn_block.py` |
-| Bottom | (SpatialAttn + FFN) × 2 → 1×1 conv 256→512 → GN → ParamAtan → QB (32,768) → 1×1 conv → (SpatialAttn + FFN) × 2 | `UNet_QB` (`--top_mixer attn`) |
+| Decoder attention | 4² … 32²: SpatialAttn + FFN; 64²: ChannelAttn + FFN; 128²: none | `networks/base_units/attn_block.py` |
+| Bottom | 2 × 2 × 1024 → 1×1 conv → flatten → FC 512→512 (+ conv shortcut) → GN → ParamAtan → QB (512) → FC 512→512 → reshape → 1×1 conv (+ shortcut) | `UNet_QB` (`--top_mixer fc`); the 5-level variant uses an attention mixer around a 32,768-channel QB (`--top_mixer attn`) |
 | Loss | (x − x̂)² + λ_p · relative-L1 VGG19 relu4_2 perceptual loss | `AEU_Perceptual_QBLoss` |
 
 The figures are generated from the code by `tools/make_fig_overview.py` and `tools/make_fig_detailed.py`
