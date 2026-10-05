@@ -165,15 +165,12 @@ text(x0 + 167, yb - 16, "z", size=FS2, italic=True)
 opcircle(x0 + 214, yb)
 text(x0 + 214, yb - 52, "n ~ Lap(0, 1/ε)", size=FS3)
 arrow([(x0 + 214, yb - 40), (x0 + 214, yb - 14)])
-arrow([(x0 + 228, yb), (x0 + 300, yb)])
-box(x0 + 300, yb - 22, 72, 44, "conv", ["1[·>½]"], size=FS3)
-text(x0 + 336, yb + 38, "test option", size=13, color="#555", italic=True)
-arrow([(x0 + 372, yb), (x0 + 404, yb)])
+arrow([(x0 + 228, yb), (x0 + 404, yb)])
 text(x0 + 418, yb, "z̃", size=FS, italic=True)
 text(PX[0] + 18, PY + 215, ["train:  z̃ = σ(h) + n   (noise on)",
-                            "test:   z̃ = σ(h)  |  1[σ(h) > ½]  |  σ(h) + n (LDP)",
+                            "test:   z̃ = σ(h) + n   (noise kept, 8 draws averaged)",
                             "ε-local DP per channel (sensitivity Δ = 1);",
-                            "Heaviside at test: ≤ 1 bit / channel;  ε = 0: bypass"], size=FS3, anchor="start", lh=22)
+                            "I(X; X̂) ≤ N·c(ε) for any encoder and decoder"], size=FS3, anchor="start", lh=22)
 
 def residual_panel(px, main, short, outlab):
     x0 = px + (PW - 375) / 2
@@ -354,7 +351,7 @@ text(36, JY + 78, [
     "L = mean (x − x̂)²  +  λ_p · L_perc(x, x̂)  [ + optional KL sparsity on σ(h) ]",
     "L_perc: relative L1 between VGG19 relu4_2 features (ImageNet weights), random shift ≤ 8 px in training;  "
     "variance head unused (--not_use_log_var)",
-    "test:  QB noise off (identity), Heaviside or LDP mode;  anomaly map = (x − x̂)² + λ_p · upsampled VGG map;  "
+    "test:  QB noise kept, scores averaged over 8 noise draws;  anomaly map = (x − x̂)² + λ_p · upsampled VGG map;  "
     "image score = perceptual term (AUC_perceptual)"],
     size=13.5, anchor="start", lh=24)
 

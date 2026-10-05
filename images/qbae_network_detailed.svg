@@ -207,16 +207,12 @@
 <line x1="284.0" y1="1247.0" x2="284.0" y2="1263.0" stroke="#444" stroke-width="1.8"/>
 <text x="284.0" y="1207.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">n ~ Lap(0, 1/ε)</text>
 <polyline points="284.0,1215.0 284.0,1241.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
-<polyline points="298.0,1255.0 370.0,1255.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
-<rect x="370.0" y="1233.0" width="72.0" height="44.0" rx="7" fill="#f3f3f3" stroke="#6f6f6f" stroke-width="1.6"/>
-<text x="406.0" y="1259.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#1a1a1a">1[·&gt;½]</text>
-<text x="406.0" y="1297.5" font-size="13" font-weight="normal" text-anchor="middle" fill="#555" font-style="italic">test option</text>
-<polyline points="442.0,1255.0 474.0,1255.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
+<polyline points="298.0,1255.0 474.0,1255.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="488.0" y="1261.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">z̃</text>
 <text x="38.0" y="1341.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  z̃ = σ(h) + n   (noise on)</text>
-<text x="38.0" y="1363.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:   z̃ = σ(h)  |  1[σ(h) &gt; ½]  |  σ(h) + n (LDP)</text>
+<text x="38.0" y="1363.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:   z̃ = σ(h) + n   (noise kept, 8 draws averaged)</text>
 <text x="38.0" y="1385.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per channel (sensitivity Δ = 1);</text>
-<text x="38.0" y="1407.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">Heaviside at test: ≤ 1 bit / channel;  ε = 0: bypass</text>
+<text x="38.0" y="1407.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">I(X; X̂) ≤ N·c(ε) for any encoder and decoder</text>
 <text x="636.0" y="1296.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
 <polyline points="648.0,1290.0 660.0,1290.0 660.0,1250.0 674.0,1250.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
 <polyline points="660.0,1290.0 660.0,1330.0 674.0,1330.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>
@@ -496,5 +492,5 @@
 <text x="34.0" y="2705.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(j) Training objective and anomaly score</text>
 <text x="36.0" y="2733.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  AdamW, lr 1e-3, cosine decay to 1e-5 after 5 warm-up epochs, gradient clipping 1.0;  input x + blob noise;  all QB layers add Laplace noise;  L = mean (x − x̂)²  +  λ_p · L_perc(x, x̂)  [ + optional KL sparsity on σ(h) ]</text>
 <text x="36.0" y="2757.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">L_perc: relative L1 between VGG19 relu4_2 features (ImageNet weights), random shift ≤ 8 px in training;  variance head unused (--not_use_log_var)</text>
-<text x="36.0" y="2781.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:  QB noise off (identity), Heaviside or LDP mode;  anomaly map = (x − x̂)² + λ_p · upsampled VGG map;  image score = perceptual term (AUC_perceptual)</text>
+<text x="36.0" y="2781.7" font-size="13.5" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:  QB noise kept, scores averaged over 8 noise draws;  anomaly map = (x − x̂)² + λ_p · upsampled VGG map;  image score = perceptual term (AUC_perceptual)</text>
 </svg>
