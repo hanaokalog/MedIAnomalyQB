@@ -157,7 +157,7 @@ If you use QBAE, please cite:
 @misc{hanaoka2026qbae,
   title  = {Quasi-Binarized Autoencoders: An Architecture-Independent Information Budget
             for Medical Image Anomaly Detection},
-  author = {Hanaoka, Shouhei and others},
+  author = {Hanaoka, Shouhei and Yoshikawa, Takeharu and Abe, Osamu},
   year   = {2026},
   note   = {Manuscript in preparation},
   url    = {https://github.com/hanaokalog/MedIAnomalyQB}
