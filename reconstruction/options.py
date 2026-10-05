@@ -103,6 +103,10 @@ class Options:
                             help='const: constant lr (v32); cosine: linear warm-up then cosine decay to --lr_min (v33)')
         parser.add_argument('--warmup_epochs', type=int, default=5, help='linear warm-up epochs for --lr_schedule cosine')
         parser.add_argument('--lr_min', type=float, default=1e-5, help='final learning rate of the cosine schedule')
+        # v33: QBAE does not write a checkpoint unless asked. All runs of one dataset/fold used to overwrite the
+        # same file, ~/Experiment/MedIAnomaly/<dataset>/unet-qb/fold_<k>/checkpoints/model.pt, which can stall on
+        # a shared file system; with --save_checkpoint the file name is unique per run (model_<id>.pt).
+        parser.add_argument('--save_checkpoint', action='store_true', help='QBAE: save the final weights (unique file name per run)')
         parser.add_argument('--grad_clip', type=float, default=1.0,
                             help='clip the global gradient norm to this value (0 = no clipping; the norm is logged either way)')
         parser.add_argument('--ldp_samples', type=int, default=8,
@@ -169,6 +173,7 @@ class Options:
         self.test['full_eval'] = args.full_eval
         self.test['ldp_samples'] = args.ldp_samples
         self.train['grad_clip'] = args.grad_clip
+        self.train['save_checkpoint'] = args.save_checkpoint
         self.train['lr_schedule'] = args.lr_schedule
         self.train['warmup_epochs'] = args.warmup_epochs
         self.train['lr_min'] = args.lr_min

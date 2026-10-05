@@ -618,5 +618,10 @@ class AEU_QBWorker(AEUWorker):
                 self.logger.log(step=epoch, data=eval_results)
                 t0 = time.time()
 
-        self.save_checkpoint()
+        if self.opt.train.get('save_checkpoint', False):
+            import uuid
+            tag = getattr(self.logger, 'id', None) or uuid.uuid4().hex[:8]   # self.logger is the wandb run
+            path = os.path.join(self.opt.train['save_dir'], "checkpoints", f"model_{tag}.pt")
+            torch.save(self.net.state_dict(), path)
+            print("=> Saved model to {}".format(path))
         self.logger.finish()
