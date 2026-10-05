@@ -1,8 +1,10 @@
 # Quasi-Binarized Autoencoders (QBAE)
 
-**Decoupling the Information Bottleneck from Architecture for Medical Anomaly Detection**
+**Quasi-Binarized Autoencoders: An Architecture-Independent Information Budget for Medical Image Anomaly Detection**
 
-Shouhei Hanaoka (The University of Tokyo Hospital) — research code, manuscript in preparation.
+Shouhei Hanaoka, Takeharu Yoshikawa, Osamu Abe (The University of Tokyo Hospital) — research code, manuscript in preparation.
+
+![Graphical abstract](images/graphical_abstract.png)
 
 This repository is a fork of the [MedIAnomaly](https://github.com/caiyu6666/MedIAnomaly) benchmark.
 The QBAE model (`-m unet-qb`) is implemented in [`reconstruction/`](./reconstruction); all other
