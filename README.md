@@ -149,6 +149,23 @@ Notes on the protocol:
 - Speed: batched evaluation, exact GPU best-Dice, bf16 VGG during training, DataLoader workers, fused AdamW.
 - Range coding, few-shot classifiers and t-SNE moved behind `--full_eval`.
 
+## Citation
+
+If you use QBAE, please cite:
+
+```bibtex
+@misc{hanaoka2026qbae,
+  title  = {Quasi-Binarized Autoencoders: An Architecture-Independent Information Budget
+            for Medical Image Anomaly Detection},
+  author = {Hanaoka, Shouhei and others},
+  year   = {2026},
+  note   = {Manuscript in preparation},
+  url    = {https://github.com/hanaokalog/MedIAnomalyQB}
+}
+```
+
+This entry will be updated with the journal reference once the paper is published.
+
 ## Acknowledgement
 
 This code is built on [MedIAnomaly](https://github.com/caiyu6666/MedIAnomaly) by Yu Cai et al. Please cite their work
