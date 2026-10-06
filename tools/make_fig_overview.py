@@ -124,7 +124,7 @@ arrow([(x0 + 224, yb), (x0 + 300, yb)])
 text(x0 + 322, yb, "z̃", size=FS, italic=True)
 text(x0 + 16, PY + 185, ["train:  z̃ = σ(h) + n,  n ~ Lap(0, 1/ε)",
                          "test:   same (noise kept, 8 draws averaged)",
-                         "ε-local DP per channel (Δ = 1);",
+                         "ε-local DP per element (Δ = 1);",
                          "I(X; X̂) ≤ N·c(ε)"], size=15, anchor="start", lh=22)
 
 # (c) ResidualDown and (d) ResidualUp share a layout

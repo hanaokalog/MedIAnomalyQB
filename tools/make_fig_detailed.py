@@ -152,7 +152,7 @@ text((EX + EW + DX) / 2 + 40, Y[6] + 12, "16,384 + 8,192 + 4,096 + 2,048 + 1,024
 # =====================================================================================
 PY, PH, PW = 990 + 165, 290, 513
 PX = [20, 543, 1067]
-panel(PX[0], PY, PW, PH, "(b) QB layer", "N channels, per sample")
+panel(PX[0], PY, PW, PH, "(b) QB layer", "N elements, per sample")
 panel(PX[1], PY, PW, PH, "(c) ResidualDown", "C×H×W → C×H/2×W/2")
 panel(PX[2], PY, PW, PH, "(d) ResidualUp", "C×H×W → C′×2H×2W")
 
@@ -169,7 +169,7 @@ arrow([(x0 + 228, yb), (x0 + 404, yb)])
 text(x0 + 418, yb, "z̃", size=FS, italic=True)
 text(PX[0] + 18, PY + 215, ["train:  z̃ = σ(h) + n   (noise on)",
                             "test:   z̃ = σ(h) + n   (noise kept, 8 draws averaged)",
-                            "ε-local DP per channel (sensitivity Δ = 1);",
+                            "ε-local DP per element (sensitivity Δ = 1);",
                             "I(X; X̂) ≤ N·c(ε) for any encoder and decoder"], size=FS3, anchor="start", lh=22)
 
 def residual_panel(px, main, short, outlab):

@@ -189,7 +189,7 @@
 <text x="687.0" y="926.9" font-size="14" font-weight="normal" text-anchor="middle" fill="#444">16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 + 512 = 32,768 = 2¹⁵</text>
 <rect x="20.0" y="1155.0" width="513.0" height="290.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
 <text x="34.0" y="1185.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(b) QB layer</text>
-<text x="519.0" y="1183.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">N channels, per sample</text>
+<text x="519.0" y="1183.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">N elements, per sample</text>
 <rect x="543.0" y="1155.0" width="513.0" height="290.0" rx="8" fill="#fbfbfb" stroke="#9a9a9a" stroke-width="1.2"/>
 <text x="557.0" y="1185.7" font-size="19" font-weight="bold" text-anchor="start" fill="#1a1a1a">(c) ResidualDown</text>
 <text x="1042.0" y="1183.9" font-size="14" font-weight="normal" text-anchor="end" fill="#444">C×H×W → C×H/2×W/2</text>
@@ -211,7 +211,7 @@
 <text x="488.0" y="1261.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">z̃</text>
 <text x="38.0" y="1341.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  z̃ = σ(h) + n   (noise on)</text>
 <text x="38.0" y="1363.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:   z̃ = σ(h) + n   (noise kept, 8 draws averaged)</text>
-<text x="38.0" y="1385.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per channel (sensitivity Δ = 1);</text>
+<text x="38.0" y="1385.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per element (sensitivity Δ = 1);</text>
 <text x="38.0" y="1407.9" font-size="14" font-weight="normal" text-anchor="start" fill="#1a1a1a">I(X; X̂) ≤ N·c(ε) for any encoder and decoder</text>
 <text x="636.0" y="1296.7" font-size="19" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
 <polyline points="648.0,1290.0 660.0,1290.0 660.0,1250.0 674.0,1250.0" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>

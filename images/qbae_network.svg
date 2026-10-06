@@ -178,7 +178,7 @@
 <text x="342" y="1001.3" font-size="18" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">z̃</text>
 <text x="36" y="1057.2" font-size="15" font-weight="normal" text-anchor="start" fill="#1a1a1a">train:  z̃ = σ(h) + n,  n ~ Lap(0, 1/ε)</text>
 <text x="36" y="1079.2" font-size="15" font-weight="normal" text-anchor="start" fill="#1a1a1a">test:   same (noise kept, 8 draws averaged)</text>
-<text x="36" y="1101.2" font-size="15" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per channel (Δ = 1);</text>
+<text x="36" y="1101.2" font-size="15" font-weight="normal" text-anchor="start" fill="#1a1a1a">ε-local DP per element (Δ = 1);</text>
 <text x="36" y="1123.2" font-size="15" font-weight="normal" text-anchor="start" fill="#1a1a1a">I(X; X̂) ≤ N·c(ε)</text>
 <text x="436" y="1035.3" font-size="18" font-weight="normal" text-anchor="middle" fill="#1a1a1a" font-style="italic">x</text>
 <polyline points="448,1029 460,1029 460,990 474,990" fill="none" stroke="#444" stroke-width="1.8" marker-end="url(#arr)"/>

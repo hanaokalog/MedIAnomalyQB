@@ -1,6 +1,6 @@
 # Quasi-Binarized Autoencoders (QBAE)
 
-**Quasi-Binarized Autoencoders: An Architecture-Independent Information Budget for Medical Image Anomaly Detection**
+**Quasi-Binarized Autoencoders: An Architecture-Independent Information Bottleneck for Medical Image Anomaly Detection**
 
 Shouhei Hanaoka, Takahiro Nakao, Atsushi Takamatsu, Takeharu Yoshikawa, Osamu Abe (The University of Tokyo Hospital) — research code, manuscript in preparation.
 
@@ -27,15 +27,15 @@ $$
 \tilde z = \sigma(h) + n,\qquad n \sim \mathrm{Laplace}(0, 1/\varepsilon)
 $$
 
-- $\sigma(h)\in[0,1]$, so each channel has sensitivity 1 and the noise is the Laplace mechanism:
-  each channel is $\varepsilon$-locally differentially private.
-- The information passed to the decoder is bounded per channel, $I(X;\hat X)\le\sum_i C_i$, independently of
+- $\sigma(h)\in[0,1]$, so each element has sensitivity 1 and the noise is the Laplace mechanism:
+  each element is $\varepsilon$-locally differentially private.
+- The information passed to the decoder is bounded per element, $I(X;\hat X)\le\sum_i C_i$, independently of
   how large or deep the encoder and decoder are.
 - The noise is kept at test time, so the network used for detection satisfies the bound; the anomaly score is
   averaged over 8 noise draws (the paper's readout). The noise-free (identity) and Heaviside readouts are
   also logged for reference (Appendix D of the paper).
 
-Because the bottleneck is set by $\varepsilon$ and the number of QB channels rather than by the architecture,
+Because the bottleneck is set by $\varepsilon$ and the number of QB elements rather than by the architecture,
 the U-Net can use full-resolution skips, attention and DC-AE residual up/down-sampling without leaking identity.
 
 ## Network
@@ -43,7 +43,7 @@ the U-Net can use full-resolution skips, attention and DC-AE residual up/down-sa
 <p align="center"><img width=100% src="./images/qbae_network.png"></p>
 
 Overview of the 7-level network used in the paper (`--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 512 --top_mixer fc --top_mid_channels 128`; 128 × 128 input, 60.7 M parameters). The decoder receives only QB outputs:
-16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 (skips) + 512 (bottom) = **32,768 QB channels**.
+16,384 + 8,192 + 4,096 + 2,048 + 1,024 + 512 (skips) + 512 (bottom) = **32,768 QB elements**.
 [PDF](./images/qbae_network.pdf) · [SVG](./images/qbae_network.svg)
 
 <details>
@@ -89,7 +89,7 @@ With `-m unet-qb`, the defaults are the common setting of the paper, used unchan
 
 | | Common setting (paper) |
 |---|---|
-| Network | 7-level U-Net (`--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 512 --top_mixer fc --top_mid_channels 128 --wf 4`), N = 32,768 QB channels, 60.7 M parameters |
+| Network | 7-level U-Net (`--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 512 --top_mixer fc --top_mid_channels 128 --wf 4`), N = 32,768 QB elements, 60.7 M parameters |
 | QB layers | ε = 10 (`--epsilon 10`); noise kept at test time, score averaged over 8 draws (`--ldp_samples 8`) |
 | Input corruption | blob noise, strength 1 (`--noise 1.0`) |
 | Sparsity | KL penalty, ρ = 0.05, weight 1e-6 (`--use_KL_divergence --rho 0.05 --firing_rate_cost_weight 1e-6`) |
@@ -107,7 +107,7 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 | Option | Default (`-m unet-qb`) | Meaning |
 |---|---|---|
 | `--epsilon` | 10 | ε of the QB layers (Laplace scale 1/ε). `0` bypasses the QB layers; a very large value (e.g. `1e8`) keeps the sigmoid but removes the noise |
-| `--latent_size_with_noise` | 512 | number of QB channels at the bottom of the network (with `--depth 7`: flatten + FC at 2 × 2; with `--depth 5`: must be a multiple of 64) |
+| `--latent_size_with_noise` | 512 | number of QB elements at the bottom of the network (with `--depth 7`: flatten + FC at 2 × 2; with `--depth 5`: must be a multiple of 64) |
 | `--noise` | 1.0 | strength of the DAE-style blob noise added to the input during training (relative to the image std); `0` disables it |
 | `--heaviside` | off | apply the Heaviside in every QB layer, also during training (evaluation always reports both modes) |
 | `--attention_gate` / `--no-attention_gate` | on | CBAM cross-attention gate between skip and up path (default since v32; without it training can diverge) |
@@ -135,12 +135,12 @@ Each evaluation logs, among others (prefix `val/` in wandb):
 
 - `AUC_perceptual_ldp_avg`, `AP_perceptual_ldp_avg` (and `PixAP_ldp_avg`, `BestDice_ldp_avg` for BraTS): **the values reported in the paper** — noisy (LDP) readout with the anomaly score averaged over `--ldp_samples` noise draws.
 - `AUC_perceptual`: the same score with the noise switched off (identity readout).
-- `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: Heaviside (≤ 1 bit/channel) readout, and a single noise draw.
+- `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: Heaviside (≤ 1 bit/element) readout, and a single noise draw.
 - `AUC`, `AP`, `AUC_l2`, `AP_l2`: from the full anomaly map or from the L2 term only.
 - BraTS only: `PixAUC`, `PixAP`, `BestDice` (and `_l2`, `_heaviside` variants).
-- Heaviside information budget on the test set (v32): `real_firing_rate` (mean fraction of QB channels with σ(h) > ½),
+- Heaviside information budget on the test set (v32): `real_firing_rate` (mean fraction of QB elements with σ(h) > ½),
   `heaviside_budget_bits` = Σ_i h₂(p_i) and `heaviside_budget_bits_jensen` = N·h₂(p̄), upper bounds in bits on the
-  information carried by the Heaviside readout (p_i: firing frequency of channel i over the test images);
+  information carried by the Heaviside readout (p_i: firing frequency of element i over the test images);
   `dead_channel_fraction`; and the same with prefix `normal_` computed on normal test images only.
 
 Notes on the protocol:
@@ -152,7 +152,7 @@ Notes on the protocol:
 ## Changes from v30
 
 - GPU implementation of the blob input noise (FFT Gaussian blur); the scipy version took about half of the training time.
-- The unused 8 × 8 skip QB is removed, so all 63,488 QB channels reach the decoder.
+- The unused 8 × 8 skip QB is removed, so all 63,488 QB elements reach the decoder.
 - The dense FC bottom bottleneck (≈ 134 M parameters) is replaced by an attention mixer (6.65 M parameters in total).
 - BatchNorm around the bottom and in the gates is replaced by GroupNorm (no coupling between samples).
 - The CBAM gate MLP had zero hidden width at the 128² stage; its width is now 4 at all stages.
@@ -166,7 +166,7 @@ If you use QBAE, please cite:
 
 ```bibtex
 @misc{hanaoka2026qbae,
-  title  = {Quasi-Binarized Autoencoders: An Architecture-Independent Information Budget
+  title  = {Quasi-Binarized Autoencoders: An Architecture-Independent Information Bottleneck
             for Medical Image Anomaly Detection},
   author = {Hanaoka, Shouhei and Nakao, Takahiro and Takamatsu, Atsushi and Yoshikawa, Takeharu and Abe, Osamu},
   year   = {2026},
