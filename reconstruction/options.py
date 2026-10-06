@@ -70,8 +70,11 @@ class Options:
         # v31: default True (this was the behaviour actually used in v30); disable with --no-using_identity_connection
         parser.add_argument('--using_identity_connection', action=argparse.BooleanOptionalAction, default=True,
                             help='residual (identity) connection inside the U-Net conv blocks')
-        parser.add_argument('--not_use_log_var', action='store_true')
-        parser.add_argument('--use_KL_divergence', action='store_true')
+        # paper defaults for unet-qb: both on (see QBAE_DEFAULTS below); turn off with --no-not_use_log_var / --no-use_KL_divergence
+        parser.add_argument('--not_use_log_var', action=argparse.BooleanOptionalAction, default=False,
+                            help='disable the per-pixel variance head')
+        parser.add_argument('--use_KL_divergence', action=argparse.BooleanOptionalAction, default=False,
+                            help='KL sparsity penalty on the mean QB activation (weight --firing_rate_cost_weight, target --rho)')
         parser.add_argument('--rho', type=float, default=0.05)
         # v32: default on (all reported runs use it; without it training can diverge). Disable with --no-attention_gate
         parser.add_argument('--attention_gate', action=argparse.BooleanOptionalAction, default=True,
@@ -113,6 +116,25 @@ class Options:
                             help='number of independent noise draws averaged for the LDP (noisy) readout at test time (1 = single draw only)')
         parser.add_argument('--full_eval', action='store_true',
                             help='also run range coding, png residual coding, one-class/few-shot classifiers and t-SNE (slow)')
+
+        # Defaults of the common setting of the paper (one configuration for all seven datasets), applied only
+        # to QBAE (-m unet-qb); the MedIAnomaly baselines keep the defaults above. Any option given on the
+        # command line still overrides these values.
+        #   7-level U-Net, N = 32,768 QB channels, epsilon = 10, blob input corruption, KL sparsity (rho 0.05, weight 1e-6),
+        #   perceptual weight 0.1, 128 x 128 input, AdamW (lr 1e-3, weight decay 1e-3, batch 128), cosine schedule,
+        #   gradient clipping 1.0, LDP readout averaged over 8 noise draws.
+        QBAE_DEFAULTS = dict(
+            input_size=128, wf=4,
+            depth=7, skip_latent_sizes='1,2,4,8,16,32', latent_size_with_noise=512, top_mixer='fc', top_mid_channels=128,
+            epsilon=10.0, noise=1.0,
+            use_KL_divergence=True, rho=0.05, firing_rate_cost_weight=1e-6,
+            perceptual_loss_weight=0.1, not_use_log_var=True,
+            train_lr=1e-3, train_weight_decay=1e-3, train_batch_size=128,
+            lr_schedule='cosine', warmup_epochs=5, lr_min=1e-5, grad_clip=1.0, ldp_samples=8,
+        )
+        pre_args, _ = parser.parse_known_args()
+        if pre_args.model_name == 'unet-qb':
+            parser.set_defaults(**QBAE_DEFAULTS)
 
         args = parser.parse_args()
 

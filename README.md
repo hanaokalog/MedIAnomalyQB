@@ -24,15 +24,16 @@ QBAE imposes the limit with a **quasi-binarizing (QB) layer** instead. Every pat
 including every U-Net skip connection, passes through a QB layer:
 
 $$
-\tilde z = \sigma(h) + n,\qquad n \sim \mathrm{Laplace}(0, 1/\varepsilon)\quad\text{(training)}
+\tilde z = \sigma(h) + n,\qquad n \sim \mathrm{Laplace}(0, 1/\varepsilon)
 $$
 
 - $\sigma(h)\in[0,1]$, so each channel has sensitivity 1 and the noise is the Laplace mechanism:
   each channel is $\varepsilon$-locally differentially private.
 - The information passed to the decoder is bounded per channel, $I(X;\hat X)\le\sum_i C_i$, independently of
   how large or deep the encoder and decoder are.
-- At test time the noise is switched off. Optionally a Heaviside $\mathbb 1[\sigma(h)>\tfrac12]$ is applied,
-  so that each channel carries at most one bit.
+- The noise is kept at test time, so the network used for detection satisfies the bound; the anomaly score is
+  averaged over 8 noise draws (the paper's readout). The noise-free (identity) and Heaviside readouts are
+  also logged for reference (Appendix D of the paper).
 
 Because the bottleneck is set by $\varepsilon$ and the number of QB channels rather than by the architecture,
 the U-Net can use full-resolution skips, attention and DC-AE residual up/down-sampling without leaking identity.
@@ -81,35 +82,43 @@ Training curves and metrics are logged to Weights & Biases (`wandb login` before
 
 ```bash
 cd reconstruction
-python train.py -d brats -m unet-qb -g 0 \
-    --input-size 128 --wf 4 \
-    --latent_size_with_noise 32768 \
-    --epsilon 100 \
-    --noise 1.0 \
-    --not_use_log_var \
-    --perceptual_loss_weight 1 \
-    -bs 64 --train-seed 0
+python train.py -d brats -m unet-qb -g 0 -f 0
 ```
 
-The values above are an example (ε = 100 is the current default choice; the input-noise strength is still being tuned).
+With `-m unet-qb`, the defaults are the common setting of the paper, used unchanged for all seven datasets:
+
+| | Common setting (paper) |
+|---|---|
+| Network | 7-level U-Net (`--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 512 --top_mixer fc --top_mid_channels 128 --wf 4`), N = 32,768 QB channels, 60.7 M parameters |
+| QB layers | ε = 10 (`--epsilon 10`); noise kept at test time, score averaged over 8 draws (`--ldp_samples 8`) |
+| Input corruption | blob noise, strength 1 (`--noise 1.0`) |
+| Sparsity | KL penalty, ρ = 0.05, weight 1e-6 (`--use_KL_divergence --rho 0.05 --firing_rate_cost_weight 1e-6`) |
+| Loss | L2 + perceptual (VGG-19), λ_p = 0.1 (`--perceptual_loss_weight 0.1 --not_use_log_var`) |
+| Optimisation | 128 × 128 input, AdamW, lr 1e-3, weight decay 1e-3, batch 128, cosine schedule with 5 warm-up epochs to 1e-5, gradient clipping 1.0 |
+
+The paper reports the mean over five seeds (`-f 0` … `-f 4`, i.e. five runs on the same split). Any option can be overridden
+on the command line, e.g. `--epsilon 30` (the ε sweep), `--epsilon 1e8` (no bottleneck), `--noise 0` (no input corruption)
+or `--no-use_KL_divergence`. The other models of MedIAnomaly (`-m ae`, …) keep their original defaults.
 `-d` is one of `rsna`, `vin`, `brain`, `lag`, `isic`, `c16`, `brats`. The number of epochs is set per dataset
 in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 
 ### Main options
 
-| Option | Default | Meaning |
+| Option | Default (`-m unet-qb`) | Meaning |
 |---|---|---|
-| `--epsilon` | 0 | ε of the QB layers (Laplace scale 1/ε). `0` bypasses the QB layers; a very large value (e.g. `1e8`) keeps the sigmoid but removes the noise |
-| `--latent_size_with_noise` | 4096 | number of bottom QB channels (must be a multiple of 64 for 128² input); 32,768 = 512 × 8 × 8 |
-| `--noise` | 0.0 | strength of the DAE-style blob noise added to the input during training (relative to the image std); `0` disables it |
+| `--epsilon` | 10 | ε of the QB layers (Laplace scale 1/ε). `0` bypasses the QB layers; a very large value (e.g. `1e8`) keeps the sigmoid but removes the noise |
+| `--latent_size_with_noise` | 512 | number of QB channels at the bottom of the network (with `--depth 7`: flatten + FC at 2 × 2; with `--depth 5`: must be a multiple of 64) |
+| `--noise` | 1.0 | strength of the DAE-style blob noise added to the input during training (relative to the image std); `0` disables it |
 | `--heaviside` | off | apply the Heaviside in every QB layer, also during training (evaluation always reports both modes) |
 | `--attention_gate` / `--no-attention_gate` | on | CBAM cross-attention gate between skip and up path (default since v32; without it training can diverge) |
-| `--not_use_log_var` | off | disable the per-pixel variance head (used in all reported runs) |
-| `--use_KL_divergence`, `--rho` | off, 0.05 | KL sparsity penalty on the mean QB activation (weight `--firing_rate_cost_weight`) |
+| `--not_use_log_var` / `--no-not_use_log_var` | on | disable the per-pixel variance head (used in all reported runs) |
+| `--use_KL_divergence` / `--no-use_KL_divergence`, `--rho`, `--firing_rate_cost_weight` | on, 0.05, 1e-6 | KL sparsity penalty on the mean QB activation |
 | `--using_identity_connection` / `--no-using_identity_connection` | on | identity shortcut in the conv blocks |
-| `--top_mixer {attn,fc}` | `attn` | attention mixer around the bottom QB, or the legacy dense FC bottleneck (v30) |
+| `--top_mixer {attn,fc}` | `fc` | attention mixer around the bottom QB, or the legacy dense FC bottleneck (v30) |
 | `--top_pos {abs,none}` | `abs` | learned absolute positional embedding added to the 8 × 8 tokens before and after the bottom QB (v32; `none` = v31) |
-| `--depth`, `--max_channels`, `--skip_latent_sizes`, `--top_mid_channels` | 5, 0, `1,2,4,8`, 32 | number of U-Net levels, cap on the channel width, skip QB channels per pixel (finest first), width entering the FC top mixer (v32). 7-level variant with the same 63,488 QB channels (skip budgets halve per level, the rest goes through a flatten + FC at 2 × 2): `--depth 7 --skip_latent_sizes 1,2,4,8,16,32 --latent_size_with_noise 31232 --top_mixer fc --top_mid_channels 128` |
+| `--depth`, `--max_channels`, `--skip_latent_sizes`, `--top_mid_channels` | 7, 0, `1,2,4,8,16,32`, 128 | number of U-Net levels, cap on the channel width, skip QB channels per pixel (finest first), width entering the FC top mixer. Earlier 5-level variant: `--depth 5 --skip_latent_sizes 1,2,4,8 --latent_size_with_noise 32768 --top_mixer attn --top_mid_channels 32` |
+| `--perceptual_loss_weight` | 0.1 | weight λ_p of the VGG-19 perceptual loss |
+| `--input-size`, `-bs`, `--train-lr`, `--train-weight-decay` | 128, 128, 1e-3, 1e-3 | input size, batch size and AdamW settings |
 | `--top_attn_depth` | 2 | number of (SpatialAttn + FFN) blocks before and after the bottom QB |
 | `--norm_type {group,batch}` | `group` | normalisation in the bottom mixer and attention gates (GroupNorm is per sample) |
 | `--perceptual_bf16` / `--no-perceptual_bf16` | on | run VGG19 in bf16 autocast during training (evaluation is fp32) |
@@ -124,9 +133,9 @@ in `options.py`; evaluation runs every `--train-eval-freq` epochs (default 25).
 
 Each evaluation logs, among others (prefix `val/` in wandb):
 
-- `AUC_perceptual`: image-level AUROC from the perceptual term of the anomaly score (main metric).
-- `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: the same with Heaviside (≤ 1 bit/channel) or noisy (LDP) test-time QB.
-- `AUC_perceptual_ldp_avg`, `AP_perceptual_ldp_avg` (and `PixAP_ldp_avg`, `BestDice_ldp_avg` for BraTS): LDP readout with the anomaly score averaged over `--ldp_samples` noise draws (v32).
+- `AUC_perceptual_ldp_avg`, `AP_perceptual_ldp_avg` (and `PixAP_ldp_avg`, `BestDice_ldp_avg` for BraTS): **the values reported in the paper** — noisy (LDP) readout with the anomaly score averaged over `--ldp_samples` noise draws.
+- `AUC_perceptual`: the same score with the noise switched off (identity readout).
+- `AUC_perceptual_heaviside`, `AUC_perceptual_ldp`: Heaviside (≤ 1 bit/channel) readout, and a single noise draw.
 - `AUC`, `AP`, `AUC_l2`, `AP_l2`: from the full anomaly map or from the L2 term only.
 - BraTS only: `PixAUC`, `PixAP`, `BestDice` (and `_l2`, `_heaviside` variants).
 - Heaviside information budget on the test set (v32): `real_firing_rate` (mean fraction of QB channels with σ(h) > ½),
