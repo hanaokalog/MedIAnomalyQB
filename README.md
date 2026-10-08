@@ -2,7 +2,9 @@
 
 **Quasi-Binarized Autoencoders: An Architecture-Independent Information Bottleneck for Medical Image Anomaly Detection**
 
-Shouhei Hanaoka, Takahiro Nakao, Atsushi Takamatsu, Takeharu Yoshikawa, Osamu Abe (The University of Tokyo Hospital) — research code, manuscript in preparation.
+Shouhei Hanaoka, Takahiro Nakao, Atsushi Takamatsu, Takeharu Yoshikawa, Osamu Abe (The University of Tokyo Hospital)
+
+[![arXiv](https://img.shields.io/badge/arXiv-2610.09670-b31b1b.svg)](https://arxiv.org/abs/2610.09670) Paper: [arXiv:2610.09670](https://arxiv.org/abs/2610.09670)
 
 ![Graphical abstract](images/graphical_abstract.png)
 
@@ -165,13 +167,14 @@ Notes on the protocol:
 If you use QBAE, please cite:
 
 ```bibtex
-@misc{hanaoka2026qbae,
+@article{hanaoka2026qbae,
   title  = {Quasi-Binarized Autoencoders: An Architecture-Independent Information Bottleneck
             for Medical Image Anomaly Detection},
   author = {Hanaoka, Shouhei and Nakao, Takahiro and Takamatsu, Atsushi and Yoshikawa, Takeharu and Abe, Osamu},
   year   = {2026},
-  note   = {Manuscript in preparation},
-  url    = {https://github.com/hanaokalog/MedIAnomalyQB}
+  journal = {arXiv preprint arXiv:2610.09670},
+  doi    = {10.48550/arXiv.2610.09670},
+  url    = {https://arxiv.org/abs/2610.09670}
 }
 ```
 
